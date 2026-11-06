@@ -285,6 +285,8 @@ html,body{overflow-x:hidden;-webkit-tap-highlight-color:transparent}
 @media(max-width:820px){.pc-only{display:none}.bar span{font-size:9.5px}.bar.ov span{letter-spacing:-1px}}
 
 #btnBackup{position:relative}#btnBackup.due::after{content:'';position:absolute;top:-4px;right:-4px;width:10px;height:10px;border-radius:50%;background:#ffb300;border:2px solid #0070b8}
+@media(max-width:820px){.top h1{font-size:15px;white-space:nowrap}.top h1 small{white-space:nowrap}}
+#btnSync.bad{border-color:#ffb300;color:#ffe08a}
 /* ===== v5: 시간 표시 · 근태 · 일일 메모 ===== */
 [hidden]{display:none!important}
 .tm{display:inline-block;font:700 12px/1.55 ui-monospace,Consolas,"Malgun Gothic",monospace;background:var(--bluebg);color:var(--blue);border-radius:6px;padding:0 6px;margin-right:6px;min-width:44px;text-align:center;flex:none;vertical-align:1px}
@@ -340,6 +342,7 @@ table.wk td{min-width:70px}
   <button class="ghost" id="btnTheme" data-act="theme" title="화면 색상 전환"></button>
   <button class="ghost" data-act="help" title="단축키 (?)"><span class="ic">⌨</span><span class="tx">도움말</span></button>
   <button class="ghost" id="btnBackup" data-act="export" title="백업 파일 받기 (.json)"><span class="ic">💾</span><span class="tx">백업</span></button>
+  <button class="ghost" id="btnSync" data-act="syncBtn" title="클라우드 동기화"></button>
   <button class="ghost" id="btnAlarm" data-act="alarmBtn"></button>
   <button class="btn primary" data-act="new">＋ 새 업무</button>
 </header>
@@ -377,14 +380,121 @@ const STATUS=['대기','진행','완료','보류'];
 /* ───────── 저장소 ───────── */
 const KEY='teamTracker.v1';
 let storageOK=true;
-const defaults=()=>({v:1,tasks:[],absences:[],memos:{},fired:{},lastBackup:'',settings:{owners:['팀장 본인','담당자 A','담당자 B','담당자 C','담당자 D'],briefTime:'08:50',afterTime:'15:00',offsets:[7,3,1,0],soon:3,stale:4,notify:true,sound:true,muteUntil:0,logo:''}});
+const defaults=()=>({v:1,tasks:[],absences:[],memos:{},sync:{at:'',hash:''},dirty:false,fired:{},lastBackup:'',settings:{owners:['팀장 본인','담당자 A','담당자 B','담당자 C','담당자 D'],briefTime:'08:50',afterTime:'15:00',offsets:[7,3,1,0],soon:3,stale:4,notify:true,sound:true,muteUntil:0,logo:''}});
 let S;
 try{S=JSON.parse(localStorage.getItem(KEY)||'null')}catch(e){S=null;storageOK=false}
 let SEED=null;if(!S){try{const e=document.getElementById('seedData');if(e&&e.textContent.trim())SEED=JSON.parse(e.textContent)}catch(_){}}
 S=Object.assign(defaults(),S||{});S.settings=Object.assign(defaults().settings,S.settings||{},SEED&&SEED.settings||{});
-function save(){try{localStorage.setItem(KEY,JSON.stringify(S));storageOK=true}catch(e){storageOK=false;toast('저장에 실패했습니다. 백업(내보내기)을 먼저 받아 두세요.','err')}}
+function save(){if(SB)S.dirty=sbHash(sbPayload())!==(S.sync&&S.sync.hash);try{localStorage.setItem(KEY,JSON.stringify(S));storageOK=true}catch(e){storageOK=false;toast('저장에 실패했습니다. 백업(내보내기)을 먼저 받아 두세요.','err')}if(SB&&S.dirty&&sbState!=='conflict'&&sbState!=='login')sbSchedule()}
 const self=()=>S.settings.owners[0]||'';
 const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+/* ───────── 클라우드 동기화 (Supabase) ─────────
+   · 로그인한 본인의 데이터(업무·부재·메모·설정)만 서버에 저장합니다. 캡처 이미지·로고·알림 끄기 상태는 보내지 않습니다.
+   · 공개용 키(publishable)만 사용합니다. 서버 쪽 RLS(행 단위 보안)가 본인 행만 읽고 쓰도록 막습니다. */
+const SB_URL='https://vgzntymruvdjgmpemuos.supabase.co',SB_KEY='sb_publishable_9DfH_L_RgEOdDpoghHUNUQ_0Fs-hvCG',SB_SESS='teamTracker.sb';
+let SB=(()=>{try{return JSON.parse(store.get(SB_SESS)||'null')}catch(e){return null}})();
+let sbState=SB?'idle':'off',sbMsg='',sbTimer=null,sbBusy=false,sbQueued=false;
+const sbHasData=()=>!!(S.tasks.length||S.absences.length||Object.keys(S.memos).length);
+function sbPayload(){const st=Object.assign({},S.settings);delete st.logo;delete st.muteUntil;return{v:1,tasks:S.tasks,absences:S.absences,memos:S.memos,settings:st}}
+function sbHash(o){const j=JSON.stringify(o);let h=5381;for(let i=0;i<j.length;i++)h=((h<<5)+h+j.charCodeAt(i))|0;return h+':'+j.length}
+function setSb(st,msg){sbState=st;sbMsg=msg||'';paintSync()}
+function paintSync(){const b=$('#btnSync');if(!b)return;
+  const m={off:['☁','로그인'],idle:['☁','동기화'],sync:['⏳','저장 중'],ok:['☁✓','동기화됨'],offline:['☁!','오프라인'],login:['☁!','재로그인'],conflict:['⚠','충돌']}[sbState]||['☁','동기화'];
+  b.innerHTML=`<span class="ic">${m[0]}</span><span class="tx">${m[1]}</span>`;
+  b.classList.toggle('bad',['offline','login','conflict'].includes(sbState));
+  b.title=sbMsg||({off:'로그인하면 여러 PC에서 같은 데이터를 쓰고, 브라우저 데이터를 지워도 복구됩니다',ok:'서버와 동기화되어 있습니다',offline:'인터넷 연결이 없어 이 PC에만 저장 중입니다. 연결되면 자동으로 올립니다',login:'로그인이 만료되었습니다. 다시 로그인하세요',conflict:'서버와 이 PC의 데이터가 서로 다릅니다. 눌러서 해결하세요'}[sbState]||'클라우드 동기화')}
+function sbSetSess(j,email){SB={at:j.access_token,rt:j.refresh_token,exp:Date.now()+(j.expires_in||3600)*1000,uid:(j.user&&j.user.id)||(SB&&SB.uid)||'',email:email||(j.user&&j.user.email)||(SB&&SB.email)||''};store.set(SB_SESS,JSON.stringify(SB))}
+function sbLogout(){SB=null;store.set(SB_SESS,'');clearTimeout(sbTimer);setSb('off')}
+async function sbToken(){
+  if(!SB)throw new Error('login');
+  if(SB.exp-Date.now()<60000){
+    const r=await fetch(SB_URL+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:{apikey:SB_KEY,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:SB.rt})});
+    if(r.status>=400&&r.status<500){SB=null;store.set(SB_SESS,'');throw new Error('login')}
+    if(!r.ok)throw new Error('http'+r.status);
+    sbSetSess(await r.json())}
+  return SB.at}
+async function sbFetch(path,opt){
+  const tk=await sbToken();opt=opt||{};
+  return fetch(SB_URL+path,Object.assign({},opt,{headers:Object.assign({apikey:SB_KEY,'Content-Type':'application/json',Authorization:'Bearer '+tk},opt.headers||{})}))}
+function sbFail(e){
+  if(e&&e.message==='login')setSb('login','로그인이 만료되었습니다. 다시 로그인하세요');
+  else setSb('offline',(e&&e.message&&e.message.startsWith('http'))?'서버 오류('+e.message+'). 이 PC에는 저장되어 있습니다':'')}
+function sbSchedule(){clearTimeout(sbTimer);sbTimer=setTimeout(()=>sbRun(sbPushFn),2000)}
+async function sbRun(fn){
+  if(!SB)return;if(sbBusy){sbQueued=true;return}
+  sbBusy=true;setSb('sync');let next=null;
+  try{next=await fn()}catch(e){sbFail(e)}finally{sbBusy=false}
+  if(next==='pull')return sbRun(()=>sbPullFn(true));
+  if(next==='push')return sbRun(sbPushFn);
+  if(sbQueued){sbQueued=false;return sbRun(S.dirty?sbPushFn:()=>sbPullFn(false))}
+}
+function sbApply(row){
+  const d=row.data||{};
+  S.tasks=d.tasks||[];S.absences=d.absences||[];S.memos=d.memos||{};
+  S.settings=Object.assign(defaults().settings,S.settings,d.settings||{});
+  S.sync={at:row.updated_at,hash:sbHash(sbPayload())};S.dirty=false;
+  save();render();setSb('ok')}
+async function sbPullFn(manual){
+  S.dirty=sbHash(sbPayload())!==(S.sync&&S.sync.hash);
+  const r=await sbFetch(`/rest/v1/app_state?select=data,updated_at&user_id=eq.${encodeURIComponent(SB.uid)}`);
+  if(r.status===404)throw new Error('http404');
+  if(!r.ok)throw new Error('http'+r.status);
+  const rows=await r.json();
+  if(!rows.length){ // 서버에 아직 없음 → 이 PC 데이터를 올림
+    S.sync={at:'',hash:''};S.dirty=true;return(sbHasData()||manual)?'push':(setSb('ok'),null)}
+  const row=rows[0];
+  if(S.sync.at&&Date.parse(S.sync.at)===Date.parse(row.updated_at)){ // 서버 변경 없음
+    if(S.dirty)return 'push';setSb('ok');return null}
+  const localChanged=S.dirty&&sbHasData();
+  if(!localChanged){sbApply(row);return null}
+  // 양쪽 모두 바뀐 경우 → 선택
+  if(document.hidden&&!manual){setSb('conflict');return null}
+  if(confirm('서버와 이 PC에 서로 다른 데이터가 있습니다.\n\n[확인] 서버 데이터를 불러옵니다.\n        (이 PC의 데이터는 백업 파일로 먼저 내려받습니다)\n[취소] 다음 단계로 이동합니다.')){
+    try{await exportBackup()}catch(e){}
+    sbApply(row);return null}
+  if(confirm('이 PC의 데이터로 서버 데이터를 덮어쓸까요?\n\n[확인] 서버에 있던 데이터가 사라집니다.\n[취소] 아무것도 바꾸지 않고 나중에 다시 결정합니다.')){
+    S.sync={at:row.updated_at,hash:S.sync.hash};return 'push'}
+  setSb('conflict');return null}
+async function sbPushFn(){
+  S.dirty=sbHash(sbPayload())!==(S.sync&&S.sync.hash);
+  if(!S.dirty&&S.sync.at){setSb('ok');return null}
+  const data=sbPayload(),h=sbHash(data),body={data,updated_at:new Date().toISOString()};
+  let r;
+  if(!S.sync.at)r=await sbFetch('/rest/v1/app_state',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify(Object.assign({user_id:SB.uid},body))});
+  else r=await sbFetch(`/rest/v1/app_state?user_id=eq.${encodeURIComponent(SB.uid)}&updated_at=eq.${encodeURIComponent(S.sync.at)}`,{method:'PATCH',headers:{Prefer:'return=representation'},body:JSON.stringify(body)});
+  if(r.status===409)return 'pull';
+  if(r.status===404)throw new Error('http404');
+  if(!r.ok)throw new Error('http'+r.status);
+  const rows=await r.json();
+  if(!rows.length)return 'pull'; // 그 사이 서버가 바뀜
+  S.sync={at:rows[0].updated_at,hash:h};save();
+  if(S.dirty){sbSchedule()}else setSb('ok');
+  return null}
+function openSync(){
+  const on=!!SB,at=S.sync&&S.sync.at?new Date(S.sync.at):null,fmt=d=>d?`${ymd(d)} ${pad(d.getHours())}:${pad(d.getMinutes())}`:'아직 없음';
+  $('#dlg').innerHTML=on?`<div class="in"><h2>클라우드 동기화</h2>
+   <p>로그인: <b>${esc(SB.email||'')}</b></p>
+   <p class="muted">상태: <b>${({ok:'동기화됨',sync:'저장 중',idle:'확인 전',offline:'오프라인(이 PC에만 저장 중)',login:'재로그인 필요',conflict:'충돌 — [지금 동기화]로 해결'})[sbState]||sbState}</b><br>마지막 서버 저장: ${fmt(at)}<br>이 PC의 미전송 변경: ${S.dirty?'있음':'없음'}</p>
+   <p class="muted">서버에는 업무·부재·메모·설정만 저장됩니다. 캡처 이미지와 로고는 이 PC에만 있습니다. 공용 PC에서는 사용 후 로그아웃하세요.</p>
+   <div class="foot"><button type="button" class="btn danger" data-act="syncOut" style="margin-right:auto">로그아웃</button><button type="button" class="btn" data-act="closeDlg">닫기</button><button type="button" class="btn primary" data-act="syncNow">지금 동기화</button></div></div>`
+  :`<div class="in"><h2>클라우드 로그인</h2><form id="syncForm" autocomplete="on">
+   <p class="muted">로그인하면 업무·부재·메모가 서버에 저장되어, 다른 PC에서도 같은 데이터를 쓸 수 있고 브라우저 데이터를 지워도 복구됩니다. 계정은 관리자가 미리 만들어 둔 것만 사용할 수 있습니다.</p>
+   <label class="f">이메일<input type="email" name="email" autocomplete="username" required></label>
+   <label class="f">비밀번호<input type="password" name="password" autocomplete="current-password" required></label>
+   <p class="err" style="color:var(--red);min-height:1.4em;margin:6px 0"></p>
+   <p class="muted">※ 주민등록번호·연락처 등 개인정보는 입력하지 마세요. 공용 PC에서는 사용 후 로그아웃하세요.</p>
+   <div class="foot"><button type="button" class="btn" data-act="closeDlg">취소</button><button class="btn primary">로그인</button></div></form></div>`;
+  $('#dlg').showModal()}
+async function sbLoginSubmit(f){
+  const d=Object.fromEntries(new FormData(f)),msg=f.querySelector('.err'),email=d.email.trim();msg.textContent='로그인 중…';
+  let r;try{r=await fetch(SB_URL+'/auth/v1/token?grant_type=password',{method:'POST',headers:{apikey:SB_KEY,'Content-Type':'application/json'},body:JSON.stringify({email,password:d.password})})}catch(e){msg.textContent='인터넷에 연결할 수 없습니다.';return}
+  if(!r.ok){let j={};try{j=await r.json()}catch(e){}
+    msg.textContent=j.error_code==='email_not_confirmed'?'이메일 인증이 완료되지 않은 계정입니다. 관리자에게 문의하세요.':(r.status===400?'이메일 또는 비밀번호가 맞지 않습니다.':'로그인에 실패했습니다 ('+r.status+')');return}
+  sbSetSess(await r.json(),email);$('#dlg').close();toast('로그인했습니다. 서버와 동기화합니다');
+  await sbRun(()=>sbPullFn(true))}
+setInterval(()=>{if(SB&&!document.hidden&&sbState!=='conflict'&&sbState!=='login'&&!sbBusy)sbRun(S.dirty?sbPushFn:()=>sbPullFn(false))},120000);
+window.addEventListener('online',()=>{if(SB&&sbState!=='login')sbRun(S.dirty?sbPushFn:()=>sbPullFn(false))});
+
 
 /* 이미지(캡처) 저장: IndexedDB */
 const idb={db:null,
@@ -439,7 +549,7 @@ function renderNav(){
   $('#nav').innerHTML=NAV.map(([k,l,sl])=>`<button data-act="nav" data-view="${k}" class="${view===k?'on':''}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[k]}</svg><span class="lb">${l}</span><span class="lbs">${sl||l}</span>${k==='today'&&n?`<span class="badge">${n}</span>`:''}</button>`).join('')+'<div class="kbd">단축키 <kbd>N</kbd> 새 업무 · <kbd>/</kbd> 검색 · <kbd>?</kbd> 도움말</div>';
   $('#todayLabel').textContent=`오늘 ${fmtDate(todayS())}`;
   const th={auto:['🌓','자동'],light:['☀','밝게'],dark:['🌙','어둡게']}[theme];$('#btnTheme').innerHTML=`<span class="ic">${th[0]}</span><span class="tx">${th[1]}</span>`;
-  applyLogo();
+  applyLogo();paintSync();
   $('#btnAlarm').innerHTML=muted()?`<span class="ic">🔕</span><span class="tx">알림 꺼짐 · ${untilText()}까지</span>`:`<span class="ic">🔔</span><span class="tx">알림 켜짐</span>`;
   document.title=n?`(${n}) 업무 챙김판`:'업무 챙김판';
 }
@@ -961,7 +1071,7 @@ async function exportBackup(){
 async function importBackup(file){
   try{const j=JSON.parse(await file.text());if(j.app!=='teamTracker'||!j.data)throw new Error('이 프로그램의 백업 파일이 아닙니다');
     if(!confirm(`백업 파일(업무 ${j.data.tasks.length}건)로 현재 데이터를 모두 바꿉니다. 계속할까요?`))return;
-    S=Object.assign(defaults(),j.data);S.settings=Object.assign(defaults().settings,S.settings||{});
+    const oldSync=S.sync;S=Object.assign(defaults(),j.data);S.settings=Object.assign(defaults().settings,S.settings||{});S.sync=oldSync||{at:'',hash:''};
     for(const [k,v] of Object.entries(j.images||{})){try{await idb.put(k,v)}catch(e){}}
     save();toast('백업을 불러왔습니다');render()}catch(e){toast('불러오기 실패: '+e.message,'err')}
 }
@@ -1012,11 +1122,15 @@ const actions={
   alarmSnooze(){const items=alarmItems.slice();closeAlarm();setTimeout(()=>items.forEach(a=>fireAlarm(a.title+' (다시 알림)',a.lines,a.key+'-s')),10*60000);toast('10분 뒤에 다시 알려드립니다')},
   export(){exportBackup()},importBackup(){$('#bk').click()},
   async wipe(){
-    if(!confirm('⚠ 이 PC에 입력한 모든 업무·부재·메모·설정이 삭제되며, 되돌릴 수 없습니다.\n\n삭제 전에 백업 파일(.json)을 자동으로 먼저 내려받습니다. 계속할까요?'))return;
+    if(!confirm('⚠ 이 PC에 입력한 모든 업무·부재·메모·설정이 삭제됩니다. (클라우드에 올라간 데이터는 지워지지 않고, 로그아웃됩니다)\n\n삭제 전에 백업 파일(.json)을 자동으로 먼저 내려받습니다. 계속할까요?'))return;
     try{await exportBackup()}catch(e){toast('백업 파일 저장에 실패해 삭제를 중단했습니다','err');return}
     await new Promise(r=>setTimeout(r,600));
     if(!confirm('백업 파일을 내려받았습니다. 다운로드 폴더에 「업무챙김판_백업_날짜.json」이 있는지 확인하세요.\n\n확인했다면 [확인]을 눌러 삭제를 진행합니다.'))return;
-    S=defaults();save();render();toast('삭제했습니다. 복원은 설정 → 백업 파일 불러오기')},
+    if(SB)sbLogout();
+    S=defaults();save();render();toast('이 PC의 데이터를 삭제했습니다. 클라우드에 올라간 데이터는 남아 있으며, 다시 로그인하면 복구됩니다')},
+  syncBtn(){openSync()},
+  syncNow(){$('#dlg').close();sbRun(()=>sbPullFn(true))},
+  syncOut(){if(S.dirty&&!confirm('서버로 아직 보내지 못한 변경이 있습니다. 로그아웃해도 이 PC에는 남아 있지만, 서버에는 반영되지 않습니다. 계속할까요?'))return;sbLogout();$('#dlg').close();toast('로그아웃했습니다. 이 PC의 데이터는 그대로 남아 있습니다')},
   async makeTemplate(){
     if(!confirm('다른 부서에 줄 「배포용 빈 파일」을 만듭니다.\n\n• 업무·부재·메모·캡처 이미지는 들어가지 않습니다.\n• 담당자 목록은 기본값(팀장 본인, 담당자 A~D)으로 초기화됩니다.\n• 알림 시각·확인 간격·로고 설정은 현재 값이 들어갑니다.\n\n계속할까요?'))return;
     flushMemo();
@@ -1065,6 +1179,7 @@ document.addEventListener('submit',async e=>{
     t.log.push({d:todayS(),text:`확인(${d.status})${d.memo?': '+d.memo:''}`});
     if(d.status==='완료')complete(t);else t.status=d.status;
     save();$('#dlg').close();EDIT=null;render();toast('확인 기록을 저장했습니다')}
+  else if(f.id==='syncForm'){sbLoginSubmit(f)}
   else if(f.id==='absForm'){
     const d=Object.fromEntries(new FormData(f)),a=EDIT.a;
     if(d.end<d.start){toast('종료일이 시작일보다 빠릅니다','err');return}
@@ -1222,8 +1337,9 @@ window.addEventListener('pagehide',flushMemo);window.addEventListener('beforeunl
   applyTheme();await idb.open();
   render();flash();save();
   tick();setInterval(tick,20000);
-  document.addEventListener('visibilitychange',()=>{if(!document.hidden){tick();render()}});
-  window.__tt={get S(){return S},render,analyze,hwpxBlocks,tick,fireAlarm,info,buckets,get IMP(){return IMP}};
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden){tick();render();if(SB&&!sbBusy&&sbState!=='conflict'&&sbState!=='login')sbRun(S.dirty?sbPushFn:()=>sbPullFn(false))}});
+  if(SB)sbRun(()=>sbPullFn(false));
+  window.__tt={get S(){return S},sbRun,sbPullFn,sbPushFn,get SB(){return SB},get sbState(){return sbState},render,analyze,hwpxBlocks,tick,fireAlarm,info,buckets,get IMP(){return IMP}};
 })();
 })();
 </script>
