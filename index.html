@@ -650,11 +650,12 @@ let IMP={cands:[],src:'',hidePast:true,inclResult:false,owner:'',type:TYPES[0],m
 let CAP={url:'',blob:null};
 let EDIT=null;
 
-const ICONS={away:'<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/>',today:'<circle cx="12" cy="12" r="9"/><path d="M8.5 12.3l2.4 2.4 4.6-4.9"/>',owners:'<circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.4"/><path d="M16 14.2c2.8.3 5 2.6 5 5.8"/>',cal:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',all:'<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',import:'<path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v3h16v-3"/>',settings:'<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>'};
-const NAV=[['today','오늘 할 일','오늘'],['owners','담당자별','담당자'],['cal','달력','달력'],['away','근태·메모','근태'],['all','전체 목록','전체'],['import','가져오기','가져오기'],['settings','설정','설정']];
+const ICONS={away:'<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/>',today:'<circle cx="12" cy="12" r="9"/><path d="M8.5 12.3l2.4 2.4 4.6-4.9"/>',owners:'<circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.4"/><path d="M16 14.2c2.8.3 5 2.6 5 5.8"/>',cal:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',all:'<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',import:'<path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v3h16v-3"/>',monthly:'<rect x="4" y="3" width="13" height="18" rx="2"/><path d="M8 8h5M8 12h5M8 16h3M17 14l4-4m0 0h-3m3 0v3"/>',settings:'<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>'};
+const NAV=[['today','오늘 할 일','오늘'],['owners','담당자별','담당자'],['cal','달력','달력'],['away','근태·메모','근태'],['all','전체 목록','전체'],['import','가져오기','가져오기'],['settings','설정','설정'],['monthly','월간업무보고 작성기 ↗','월보']];
+const MONTHLY_URL='https://sudc1.github.io/monthly/';
 function renderNav(){
   const b=buckets(),n=b.over.length+b.today.length+b.chk.length;
-  $('#nav').innerHTML=NAV.map(([k,l,sl])=>`<button data-act="nav" data-view="${k}" class="${view===k?'on':''}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[k]}</svg><span class="lb">${l}</span><span class="lbs">${sl||l}</span>${k==='today'&&n?`<span class="badge">${n}</span>`:''}</button>`).join('')+'<div class="kbd">단축키 <kbd>N</kbd> 새 업무 · <kbd>/</kbd> 검색 · <kbd>?</kbd> 도움말</div>';
+  $('#nav').innerHTML=NAV.map(([k,l,sl])=>`<button data-act="${k==='monthly'?'goMonthly':'nav'}" data-view="${k}" ${k==='monthly'?`title="새 창에서 ${MONTHLY_URL} 를 엽니다"`:''} class="${view===k?'on':''}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[k]}</svg><span class="lb">${l}</span><span class="lbs">${sl||l}</span>${k==='today'&&n?`<span class="badge">${n}</span>`:''}</button>`).join('')+'<div class="kbd">단축키 <kbd>N</kbd> 새 업무 · <kbd>/</kbd> 검색 · <kbd>?</kbd> 도움말</div>';
   $('#todayLabel').textContent=`오늘 ${fmtDate(todayS())}`;
   const th={auto:['🌓','자동'],light:['☀','밝게'],dark:['🌙','어둡게']}[theme];$('#btnTheme').innerHTML=`<span class="ic">${th[0]}</span><span class="tx">${th[1]}</span>`;
   applyLogo();paintSync();
@@ -772,13 +773,25 @@ function memoBox(ds){
   const n=new Date(),hm=`${pad(n.getHours())}:${pad(n.getMinutes())}`;
   return `<div class="panel memo"><h3>📝 ${fmtDate(ds)} 메모장 <span class="muted" id="memoState" style="font-weight:400">자동 저장</span></h3>
   <textarea id="memoTa" data-date="${ds}" placeholder="일정과 상관없이 하루 한 장에 적어 두세요. [지금 시각]을 누르면 새 줄 앞에 시각이 들어갑니다.">${esc(S.memos[ds]||'')}</textarea>
-  <div class="memo-bar"><button class="btn sm primary" data-act="memoNow">⏱ 지금 시각 넣기</button><span class="muted">또는</span><input type="time" id="memoT" value="${hm}"><button class="btn sm" data-act="memoAt">이 시각 넣기</button></div></div>`;
+  <div class="memo-bar"><button class="btn sm primary" data-act="memoNow">⏱ 지금 시각 넣기</button><span class="muted">또는</span><input type="time" id="memoT" value="${hm}"><button class="btn sm" data-act="memoAt">이 시각 넣기</button></div>
+  <div class="memo-bar memo-save"><button class="btn sm primary" data-act="memoSave" title="Ctrl+S">💾 저장</button><button class="btn sm" data-act="memoTxt">📄 텍스트 파일(.txt)로 저장</button><span class="muted">입력하면 자동 저장되며, 저장 버튼을 누르면 즉시 확정하고 서버로도 보냅니다.</span></div></div>`;
 }
 let memoTimer=null;
 function saveMemo(ds,text){
   if(text.trim())S.memos[ds]=text;else delete S.memos[ds];save();
   const e=$('#memoState');if(e){const n=new Date();e.textContent=`저장됨 ${pad(n.getHours())}:${pad(n.getMinutes())}:${pad(n.getSeconds())}`}
 }
+function memoSaveNow(){
+  const ta=$('#memoTa');if(!ta||!ta.dataset.date){toast('저장할 메모장이 열려 있지 않습니다','err');return}
+  clearTimeout(memoTimer);saveMemo(ta.dataset.date,ta.value);
+  if(SB&&S.dirty&&sbState!=='conflict'&&sbState!=='login'){clearTimeout(sbTimer);sbRun(sbPushFn);toast('메모를 저장하고 서버로 보냅니다')}
+  else if(SB)toast('메모를 저장했습니다');
+  else toast('이 브라우저에 저장했습니다. 로그인하면 서버에도 보관됩니다')}
+function memoToTxt(){
+  const ta=$('#memoTa');if(!ta||!ta.dataset.date)return;const ds=ta.dataset.date;
+  if(!ta.value.trim()){toast('저장할 메모 내용이 없습니다','err');return}
+  clearTimeout(memoTimer);saveMemo(ds,ta.value);
+  download(`메모_${ds}.txt`,'\uFEFF'+ta.value.replace(/\r?\n/g,'\r\n'),'text/plain;charset=utf-8');toast(`메모_${ds}.txt 파일로 저장했습니다`)}
 function flushMemo(){clearTimeout(memoTimer);const ta=$('#memoTa');if(ta&&ta.dataset.date&&(S.memos[ta.dataset.date]||'')!==ta.value)saveMemo(ta.dataset.date,ta.value)}
 function insertTime(hm){
   const ta=$('#memoTa');if(!ta)return;const v=ta.value,pos=ta.dataset.touched==='1'?ta.selectionStart:v.length;
@@ -1202,6 +1215,8 @@ const actions={
   editAbs(id){openAbs(id)},
   delAbs(){if(!EDIT||!EDIT.a||!confirm('이 부재 일정을 삭제할까요?'))return;S.absences=S.absences.filter(x=>x.id!==EDIT.a.id);save();$('#dlg').close();EDIT=null;render()},
   awMove(id,b){const n=+b.dataset.n;AW.date=n===0?todayS():addDays(AW.date,n*(b.dataset.unit==='week'?7:1));render()},
+  memoSave(){memoSaveNow()},
+  memoTxt(){memoToTxt()},
   memoNow(){const n=new Date();insertTime(`${pad(n.getHours())}:${pad(n.getMinutes())}`)},
   memoAt(){const v=$('#memoT').value;if(v)insertTime(v)},
   openDay(id,b){AW.date=b.dataset.day;view='away';store.set('teamTracker.view',view);render();flash();window.scrollTo(0,0)},
@@ -1239,6 +1254,7 @@ const actions={
     if(SB)sbLogout();
     S=defaults();save();render();toast('이 PC의 데이터를 삭제했습니다. 클라우드에 올라간 데이터는 남아 있으며, 다시 로그인하면 복구됩니다')},
   syncBtn(){openSync()},
+  goMonthly(){window.open(MONTHLY_URL,'_blank','noopener')},
   syncNow(){$('#dlg').close();sbRun(()=>sbPullFn(true))},
   syncOut(){if(S.dirty&&!confirm('서버로 아직 보내지 못한 변경이 있습니다. 로그아웃해도 이 PC에는 남아 있지만, 서버에는 반영되지 않습니다. 계속할까요?'))return;sbLogout();$('#dlg').close();toast('로그아웃했습니다. 이 PC의 데이터는 그대로 남아 있습니다')},
   async makeTemplate(){
@@ -1428,6 +1444,7 @@ document.addEventListener('drop',e=>{
   if(!t||(t.owner||'')===to)return;
   t.log.push({d:todayS(),text:`담당자 변경 ${t.owner||'미지정'} → ${to||'미지정'}`});t.owner=to;t.lastCheck=todayS();save();render();toast(`"${t.title.slice(0,24)}" 담당을 ${to||'미지정'}(으)로 변경했습니다`)});
 document.addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&!e.altKey&&(e.key==='s'||e.key==='S')&&e.target.id==='memoTa'){e.preventDefault();memoSaveNow();return}
   if(e.ctrlKey||e.metaKey||e.altKey)return;
   const tag=(e.target.tagName||'').toLowerCase();
   if(['input','textarea','select'].includes(tag)||$('#dlg').open||$('#alarm').open)return;
