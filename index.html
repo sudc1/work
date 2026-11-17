@@ -86,11 +86,12 @@ tr[data-act]{cursor:pointer}tr[data-act]:hover td{background:var(--bluebg)}
 .cal .d .num{font-size:13px;color:var(--sub)}.cal .d.td .num{background:var(--brand);color:var(--brand-ink);border-radius:10px;padding:0 7px;font-weight:700}
 .cal .d.sun .num{color:var(--red)}
 .cal .d{--pd:4px;position:relative}
-.cal .bd{display:block;position:relative;z-index:1;height:18px;margin:2px calc(-1*var(--pd) - 1px) 0 calc(-1*var(--pd));background:var(--gray);color:#fff;font-size:11.5px;line-height:18px;font-weight:600;white-space:nowrap}
-.cal .bd.st{margin-left:0;border-radius:9px 0 0 9px}.cal .bd.en{margin-right:0;border-radius:0 9px 9px 0}.cal .bd.st.en{border-radius:9px}
+.cal .bd{display:block;position:relative;z-index:1;height:9px;margin:15px calc(-1*var(--pd) - 1px) 0 calc(-1*var(--pd));background:var(--gray);color:#fff;font-size:11px;line-height:9px;font-weight:600;white-space:nowrap}
+.cal .bd.st{margin-left:0;border-radius:5px 0 0 5px}.cal .bd.en{margin-right:0;border-radius:0 5px 5px 0}.cal .bd.st.en{border-radius:5px}
 .cal .bd.over{background:var(--red)}.cal .bd.today{background:var(--orange)}.cal .bd.soon{background:#c9a100}.cal .bd.done{opacity:.5}
 .cal .bd.sp{visibility:hidden;cursor:default}
-.cal .bd .bt{position:absolute;left:0;top:0;z-index:2;box-sizing:border-box;overflow:hidden;text-overflow:ellipsis;padding-right:4px;pointer-events:none}
+.cal .bd .bt{position:absolute;left:0;bottom:100%;z-index:2;box-sizing:border-box;overflow:hidden;text-overflow:ellipsis;padding-right:4px;pointer-events:none;color:var(--ink,#1c2430);font-size:11px;line-height:13px;font-weight:600;height:13px}
+.swatches{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:4px 0 12px}.sw{position:relative;cursor:pointer;margin:0}.sw input{position:absolute;opacity:0;width:0;height:0}.sw span{display:block;width:26px;height:26px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px var(--line)}.sw.auto span{width:auto;height:26px;border-radius:13px;padding:0 10px;line-height:22px;font-size:12px;color:var(--sub);background:var(--graybg)}.sw input:checked+span{box-shadow:0 0 0 3px var(--brand)}.sw input:focus-visible+span{outline:2px solid var(--brand);outline-offset:3px}
 .ev{display:block;font-size:12px;border-radius:4px;padding:1px 5px;margin-top:2px;background:var(--graybg);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;border-left:3px solid var(--gray)}
 .ev.over{background:var(--redbg);border-color:var(--red)}.ev.today{background:var(--orangebg);border-color:var(--orange)}.ev.soon{background:var(--amberbg);border-color:#c9a100}.ev.done{opacity:.5;text-decoration:line-through}
 .drop{border:2px dashed var(--line);border-radius:10px;padding:18px;text-align:center;color:var(--sub)}.drop.on{border-color:var(--brand);background:var(--bluebg)}
@@ -620,8 +621,10 @@ const readUrl=b=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>r
 async function shrink(blob){let bmp;try{bmp=await createImageBitmap(blob)}catch(e){return readUrl(blob)}const k=Math.min(1,1600/Math.max(bmp.width,bmp.height));const c=document.createElement('canvas');c.width=Math.round(bmp.width*k);c.height=Math.round(bmp.height*k);c.getContext('2d').drawImage(bmp,0,0,c.width,c.height);return c.toDataURL('image/jpeg',.82)}
 
 /* ───────── 업무 상태 계산 ───────── */
-function newTask(p={}){return Object.assign({id:uid(),title:'',type:TYPES[1],owner:'',start:'',due:'',time:'',remind:0,status:'대기',repeat:'',note:'',source:'',lastCheck:'',created:todayS(),doneAt:'',log:[],images:[]},p)}
+function newTask(p={}){return Object.assign({id:uid(),title:'',type:TYPES[1],owner:'',start:'',color:'',due:'',time:'',remind:0,status:'대기',repeat:'',note:'',source:'',lastCheck:'',created:todayS(),doneAt:'',log:[],images:[]},p)}
 function rangeOf(t){return t.start&&t.due&&t.start<t.due?[t.start,t.due]:null}
+const BAND_COLORS=[['#1d4ed8','파랑'],['#15803d','초록'],['#b45309','주황'],['#b91c1c','빨강'],['#6d28d9','보라'],['#0e7490','청록'],['#be185d','분홍'],['#475569','회색']];
+const okColor=c=>/^#[0-9a-f]{6}$/i.test(c||'');
 const onDay=(t,ds)=>{const r=rangeOf(t);return r?(r[0]<=ds&&ds<=r[1]):t.due===ds};
 const rangeTxt=t=>{const r=rangeOf(t);return r?`${fmtDate(r[0])} ~ ${fmtDate(r[1])}`:fmtDate(t.due)};
 function info(t){
@@ -881,7 +884,7 @@ function viewCal(){
       const isS=ds===t.start,isE=ds===t.due,lab=isS||c%7===0||n===1;let tx='';
       if(lab){const toEnd=dayDiff(t.due,ds),N=1+Math.min(toEnd,6-c%7,days-n),a=isS?0:4,rEnd=toEnd===N-1?0:5,px=(N-1)*(4-a)-5+rEnd;
         tx=`<span class="bt" style="width:${N===1?'100%':`calc(${N*100}% + ${px}px)`};padding-left:${isS?6:8}px">${t.time?t.time+' ':''}${esc(t.title)}</span>`}
-      o+=`<span class="bd ${info(t).state} ${isS?'st':''} ${isE?'en':''}" data-act="edit" data-id="${t.id}" title="${esc(t.title+' ('+rangeTxt(t)+')')}">${tx}</span>`}
+      o+=`<span class="bd ${info(t).state} ${isS?'st':''} ${isE?'en':''}" ${okColor(t.color)?`style="background:${t.color}"`:''} data-act="edit" data-id="${t.id}" title="${esc(t.title+' ('+rangeTxt(t)+')')}">${tx}</span>`}
     return o};
   let h=DOW.map((d,i)=>`<div class="h" ${i===0?'style="color:var(--red)"':''}>${d}</div>`).join('');
   for(let c=0;c<rows*7;c++){
@@ -1180,6 +1183,7 @@ function openEdit(id,preset){
     <label class="f">담당자<select name="owner">${ownerOpts(t.owner,'미지정')}</select></label></div>
   <div class="row"><label class="f">시작일 <span class="muted">(연속 일정일 때만)</span><input type="date" name="start" value="${t.start||''}"></label>
     <label class="f">기한 <span class="muted">(연속이면 종료일)</span><input type="date" name="due" value="${t.due}"></label></div>
+  <div class="f">띠 색상 <span class="muted">(달력의 연속 일정 띠)</span><div class="swatches"><label class="sw auto" title="기한 상태에 따라 자동 (빨강·주황·노랑·회색)"><input type="radio" name="color" value="" ${okColor(t.color)?'':'checked'}><span>자동</span></label>${BAND_COLORS.map(([c,n])=>`<label class="sw" title="${n}"><input type="radio" name="color" value="${c}" ${(t.color||'').toLowerCase()===c?'checked':''}><span style="background:${c}"></span></label>`).join('')}</div></div>
   <div class="row"><label class="f">시각 (선택)<input type="time" name="time" value="${t.time}"></label>
     <label class="f">시각 알림<select name="remind">${[[0,'없음'],[10,'10분 전'],[30,'30분 전'],[60,'1시간 전'],[1440,'하루 전']].map(([v,l])=>`<option value="${v}" ${+t.remind===v?'selected':''}>${l}</option>`).join('')}</select></label></div>
   <div class="row"><label class="f">상태<select name="status">${statusOpts(t.status)}</select></label>
@@ -1326,7 +1330,7 @@ document.addEventListener('submit',async e=>{
     if(d.start&&!d.due){toast('시작일을 넣었다면 종료일(기한)도 넣어 주세요','err');return}
     if(d.start&&d.due&&d.start>d.due){toast('시작일이 종료일보다 늦습니다','err');return}
     if(d.start&&d.start===d.due)d.start='';
-    Object.assign(t,{title:d.title.trim(),type:d.type,owner:d.owner,start:d.start||'',due:d.due,time:d.time,remind:+d.remind,status:d.status,repeat:d.repeat,source:d.source.trim(),note:d.note});
+    Object.assign(t,{title:d.title.trim(),type:d.type,owner:d.owner,start:d.start||'',color:okColor(d.color)?d.color:'',due:d.due,time:d.time,remind:+d.remind,status:d.status,repeat:d.repeat,source:d.source.trim(),note:d.note});
     if(EDIT.isNew){t.lastCheck=todayS();S.tasks.push(t)}else{const i=S.tasks.findIndex(x=>x.id===t.id);const was=S.tasks[i];S.tasks[i]=t;if(was.status!=='완료'&&t.status==='완료')complete(t)}
     EDIT.removed.forEach(i=>idb.del(i).catch(()=>{}));save();$('#dlg').close();EDIT=null;render()}
   else if(f.id==='checkForm'){const d=Object.fromEntries(new FormData(f)),t=S.tasks.find(x=>x.id===EDIT.cid);
