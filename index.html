@@ -384,12 +384,12 @@ const STATUS=['대기','진행','완료','보류'];
 /* ───────── 저장소 ───────── */
 const KEY='teamTracker.v1';
 let storageOK=true;
-const defaults=()=>({v:1,tasks:[],absences:[],memos:{},sync:{at:'',hash:''},dirty:false,fired:{},lastBackup:'',settings:{owners:['팀장 본인','담당자 A','담당자 B','담당자 C','담당자 D'],briefTime:'08:50',afterTime:'15:00',offsets:[7,3,1,0],soon:3,stale:4,notify:true,sound:true,muteUntil:0,logo:''}});
+const defaults=()=>({v:1,tasks:[],absences:[],memos:{},sync:{at:'',hash:''},dirty:false,pdirty:false,team:null,tm:{},tmInit:false,conflicts:[],fired:{},lastBackup:'',settings:{owners:['팀장 본인','담당자 A','담당자 B','담당자 C','담당자 D'],briefTime:'08:50',afterTime:'15:00',offsets:[7,3,1,0],soon:3,stale:4,notify:true,sound:true,muteUntil:0,logo:''}});
 let S;
 try{S=JSON.parse(localStorage.getItem(KEY)||'null')}catch(e){S=null;storageOK=false}
 let SEED=null;if(!S){try{const e=document.getElementById('seedData');if(e&&e.textContent.trim())SEED=JSON.parse(e.textContent)}catch(_){}}
 S=Object.assign(defaults(),S||{});S.settings=Object.assign(defaults().settings,S.settings||{},SEED&&SEED.settings||{});
-function save(){if(SB)S.dirty=sbHash(sbPayload())!==(S.sync&&S.sync.hash);try{localStorage.setItem(KEY,JSON.stringify(S));storageOK=true}catch(e){storageOK=false;toast('저장에 실패했습니다. 백업(내보내기)을 먼저 받아 두세요.','err')}if(SB&&S.dirty&&sbState!=='conflict'&&sbState!=='login')sbSchedule()}
+function save(){if(SB)sbCalcDirty();try{localStorage.setItem(KEY,JSON.stringify(S));storageOK=true}catch(e){storageOK=false;toast('저장에 실패했습니다. 백업(내보내기)을 먼저 받아 두세요.','err')}if(SB&&S.dirty&&sbState!=='conflict'&&sbState!=='login')sbSchedule()}
 const self=()=>S.settings.owners[0]||'';
 const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
 /* ───────── 클라우드 동기화 (Supabase) ─────────
@@ -398,8 +398,15 @@ const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},se
 const SB_URL='https://vgzntymruvdjgmpemuos.supabase.co',SB_KEY='sb_publishable_9DfH_L_RgEOdDpoghHUNUQ_0Fs-hvCG',SB_SESS='teamTracker.sb';
 let SB=(()=>{try{return JSON.parse(store.get(SB_SESS)||'null')}catch(e){return null}})();
 let sbState=SB?'idle':'off',sbMsg='',sbTimer=null,sbBusy=false,sbQueued=false;
-const sbHasData=()=>!!(S.tasks.length||S.absences.length||Object.keys(S.memos).length);
-function sbPayload(){const st=Object.assign({},S.settings);delete st.logo;delete st.muteUntil;return{v:1,tasks:S.tasks,absences:S.absences,memos:S.memos,settings:st}}
+const isTeam=()=>!!(SB&&S.team&&S.team.me);
+const isLead=()=>isTeam()&&S.team.me.role==='lead';
+const mineScope=t=>!isTeam()||isLead()||!t.owner||t.owner===self();
+const sbHasData=()=>isTeam()?Object.keys(S.memos).length>0:!!(S.tasks.length||S.absences.length||Object.keys(S.memos).length);
+let teamLoaded=false;
+function sbPayload(){const st=Object.assign({},S.settings);delete st.logo;delete st.muteUntil;
+  if(isTeam()){delete st.owners;return{v:2,memos:S.memos,settings:st}}
+  return{v:1,tasks:S.tasks,absences:S.absences,memos:S.memos,settings:st}}
+function sbCalcDirty(){S.pdirty=sbHash(sbPayload())!==(S.sync&&S.sync.hash);S.dirty=S.pdirty||teamDirty()}
 function sbHash(o){const j=JSON.stringify(o);let h=5381;for(let i=0;i<j.length;i++)h=((h<<5)+h+j.charCodeAt(i))|0;return h+':'+j.length}
 function setSb(st,msg){sbState=st;sbMsg=msg||'';paintSync()}
 function paintSync(){const b=$('#btnSync');if(!b)return;
@@ -408,7 +415,7 @@ function paintSync(){const b=$('#btnSync');if(!b)return;
   b.classList.toggle('bad',['offline','login','conflict'].includes(sbState));
   b.title=sbMsg||({off:'로그인하면 여러 PC에서 같은 데이터를 쓰고, 브라우저 데이터를 지워도 복구됩니다',ok:'서버와 동기화되어 있습니다',offline:'인터넷 연결이 없어 이 PC에만 저장 중입니다. 연결되면 자동으로 올립니다',login:'로그인이 만료되었습니다. 다시 로그인하세요',conflict:'서버와 이 PC의 데이터가 서로 다릅니다. 눌러서 해결하세요'}[sbState]||'클라우드 동기화')}
 function sbSetSess(j,email){SB={at:j.access_token,rt:j.refresh_token,exp:Date.now()+(j.expires_in||3600)*1000,uid:(j.user&&j.user.id)||(SB&&SB.uid)||'',email:email||(j.user&&j.user.email)||(SB&&SB.email)||''};store.set(SB_SESS,JSON.stringify(SB))}
-function sbLogout(){SB=null;store.set(SB_SESS,'');clearTimeout(sbTimer);setSb('off')}
+function sbLogout(){SB=null;store.set(SB_SESS,'');clearTimeout(sbTimer);teamLoaded=false;setSb('off')}
 async function sbToken(){
   if(!SB)throw new Error('login');
   if(SB.exp-Date.now()<60000){
@@ -432,36 +439,132 @@ async function sbRun(fn){
   if(next==='push')return sbRun(sbPushFn);
   if(sbQueued){sbQueued=false;return sbRun(S.dirty?sbPushFn:()=>sbPullFn(false))}
 }
+/* ── 팀 공유: 업무·부재를 1건=1줄로 저장하고 변경분만 주고받습니다 ── */
+const TEAM_CFG=[
+ {k:'t',table:'team_tasks',ownerCol:'owner_id',get:()=>S.tasks,set:v=>{S.tasks=v},label:x=>x.title||'업무'},
+ {k:'a',table:'team_absences',ownerCol:'user_id',get:()=>S.absences,set:v=>{S.absences=v},label:x=>((x.owner||'')+' '+(x.kind||'')).trim()}];
+function tmeta(k){S.tm=S.tm||{};return S.tm[k]=S.tm[k]||{rev:{},h:{}}}
+function teamDirty(){
+  if(!isTeam())return false;
+  return TEAM_CFG.some(c=>{const m=tmeta(c.k),l=c.get(),ids=new Set(l.map(x=>x.id));
+    return l.some(x=>!(x.id in m.h)||sbHash(x)!==m.h[x.id])||Object.keys(m.h).some(id=>!ids.has(id))})}
+const teamUid=name=>{const p=S.team&&S.team.list.find(x=>x.display_name===name);return p?p.user_id:null};
+async function teamLoad(){
+  const r=await sbFetch('/rest/v1/team_profiles?select=user_id,display_name,role');
+  if(r.status===404||r.status===406){S.team=null;return}   // 표가 없으면 개인 모드
+  if(!r.ok)throw new Error('http'+r.status);
+  const rows=await r.json(),me=rows.find(x=>x.user_id===SB.uid);
+  if(!me){S.team=null;return}                               // 프로필이 없으면 개인 모드
+  S.team={me,list:rows};
+  S.settings.owners=[me.display_name,...rows.filter(x=>x.user_id!==me.user_id).map(x=>x.display_name)];
+  save();render()}
+function teamKeep(c,x,why){S.conflicts=(S.conflicts||[]).slice(-29);S.conflicts.push({at:new Date().toISOString(),table:c.table,why,data:x})}
+async function teamSyncOne(c,notes){
+  const m=tmeta(c.k),eq=(a,b)=>!!a&&!!b&&Date.parse(a)===Date.parse(b),enc=encodeURIComponent;
+  const r=await sbFetch(`/rest/v1/${c.table}?select=id,data,updated_at,${c.ownerCol}&limit=5000`);
+  if(r.status===404)throw new Error('http404');
+  if(!r.ok)throw new Error('http'+r.status);
+  const remote=await r.json(),rmap=new Map(remote.map(x=>[x.id,x]));
+  const local=c.get().slice(),lmap=new Map(local.map(x=>[x.id,x]));
+  const isDirty=x=>!(x.id in m.h)||sbHash(x)!==m.h[x.id];
+  const take=row=>{const d=row.data;d.id=row.id;m.rev[row.id]=row.updated_at;m.h[row.id]=sbHash(d);return d};
+  const out=[],ins=[],upd=[],del=[];let changed=false,wrote=false;
+  for(const row of remote){
+    const lx=lmap.get(row.id),known=row.id in m.h;
+    if(!lx){
+      if(known){ if(eq(m.rev[row.id],row.updated_at))del.push(row); else{out.push(take(row));changed=true;notes.push('삭제하려던 항목이 그 사이 수정되어 복원: '+c.label(row.data))} }
+      else{out.push(take(row));changed=true}
+    }else if(eq(m.rev[row.id],row.updated_at)){
+      out.push(lx);if(isDirty(lx))upd.push({x:lx,row,idx:out.length-1});
+    }else{
+      if(isDirty(lx)){teamKeep(c,lx,'서버 변경과 충돌');notes.push('다른 사람이 먼저 수정해 서버 내용으로 바꿈: '+c.label(lx))}
+      out.push(take(row));changed=true}
+  }
+  for(const lx of local){
+    if(rmap.has(lx.id))continue;
+    if(lx.id in m.h){
+      if(isDirty(lx)){delete m.h[lx.id];delete m.rev[lx.id];ins.push(lx);out.push(lx)}   // 서버에서 지워졌지만 내가 수정했으면 다시 올림
+      else{changed=true;notes.push('다른 사람이 삭제한 항목을 이 PC에서도 제거: '+c.label(lx))}
+    }else{ins.push(lx);out.push(lx)}
+  }
+  const body=x=>({data:x,[c.ownerCol]:teamUid(x.owner)});
+  const dropLocal=(x,why)=>{const i=out.indexOf(x);if(i>=0)out.splice(i,1);delete m.h[x.id];delete m.rev[x.id];teamKeep(c,x,why);notes.push(why+': '+c.label(x));changed=true};
+  // 새 항목 올리기
+  if(ins.length){
+    let rows=null;
+    const rr=await sbFetch(`/rest/v1/${c.table}`,{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify(ins.map(x=>Object.assign({id:x.id},body(x))))});
+    if(rr.ok)rows=await rr.json();
+    else if(rr.status===401||rr.status===403||rr.status===400||rr.status===409||rr.status===404){
+      rows=[];for(const x of ins){
+        const r1=await sbFetch(`/rest/v1/${c.table}`,{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify(Object.assign({id:x.id},body(x)))});
+        if(r1.ok)rows.push(...(await r1.json()));else if(r1.status>=500)throw new Error('http'+r1.status);else dropLocal(x,'권한이 없거나 저장할 수 없어 제외')}
+    }else throw new Error('http'+rr.status);
+    for(const row of rows){const x=out.find(y=>y.id===row.id);if(x){m.rev[row.id]=row.updated_at;m.h[row.id]=sbHash(x);wrote=true}}
+  }
+  // 수정 올리기
+  for(const u of upd){
+    const r1=await sbFetch(`/rest/v1/${c.table}?id=eq.${enc(u.x.id)}&updated_at=eq.${enc(m.rev[u.x.id])}`,{method:'PATCH',headers:{Prefer:'return=representation'},body:JSON.stringify(body(u.x))});
+    if(r1.status>=500)throw new Error('http'+r1.status);
+    const rows=r1.ok?await r1.json():[];
+    if(rows.length){m.rev[u.x.id]=rows[0].updated_at;m.h[u.x.id]=sbHash(u.x);wrote=true}
+    else{teamKeep(c,u.x,'수정 권한 없음 또는 충돌');notes.push('수정 권한이 없거나 다른 사람이 먼저 수정해 서버 내용으로 되돌림: '+c.label(u.x));out[u.idx]=take(u.row);changed=true}
+  }
+  // 삭제 올리기
+  for(const row of del){
+    const r1=await sbFetch(`/rest/v1/${c.table}?id=eq.${enc(row.id)}&updated_at=eq.${enc(row.updated_at)}`,{method:'DELETE',headers:{Prefer:'return=representation'}});
+    if(r1.status>=500)throw new Error('http'+r1.status);
+    const rows=r1.ok?await r1.json():[];
+    if(rows.length){delete m.h[row.id];delete m.rev[row.id];wrote=true}
+    else{out.push(take(row));changed=true;notes.push('삭제 권한이 없어 복원: '+c.label(row.data))}
+  }
+  const ids=new Set(out.map(x=>x.id));Object.keys(m.h).forEach(id=>{if(!ids.has(id)){delete m.h[id];delete m.rev[id]}});
+  c.set(out);
+  return changed||wrote}
+async function teamSyncAll(manual){
+  if(!isTeam())return;
+  if(!S.tmInit){
+    const n=S.tasks.length,a=S.absences.length;
+    if(n||a){
+      if(!confirm(`팀 공유 계정으로 처음 연결합니다.\n\n이 PC에 있는 업무 ${n}건·부재 ${a}건을 팀 업무로 올릴까요?\n\n[확인] 팀 전체가 볼 수 있게 서버에 올립니다.\n[취소] 올리지 않고 이 PC에서 지웁니다. (백업 파일을 먼저 내려받습니다)`)){
+        try{await exportBackup()}catch(e){}
+        S.tasks=[];S.absences=[]}}
+    S.tmInit=true;save()}
+  const notes=[];let ch=false;
+  for(const c of TEAM_CFG){if(await teamSyncOne(c,notes))ch=true}
+  save();if(ch)render();
+  if(notes.length)toast(notes.slice(0,3).join('\n')+(notes.length>3?`\n외 ${notes.length-3}건`:''),'err')}
+async function sbTeamStep(manual){
+  if(!teamLoaded||manual){await teamLoad();teamLoaded=true}
+  await teamSyncAll(manual)}
 function sbApply(row){
   const d=row.data||{};
-  S.tasks=d.tasks||[];S.absences=d.absences||[];S.memos=d.memos||{};
-  S.settings=Object.assign(defaults().settings,S.settings,d.settings||{});
-  S.sync={at:row.updated_at,hash:sbHash(sbPayload())};S.dirty=false;
+  if(!isTeam()){S.tasks=d.tasks||[];S.absences=d.absences||[]}
+  S.memos=d.memos||{};
+  const ow=S.settings.owners;S.settings=Object.assign(defaults().settings,S.settings,d.settings||{});if(isTeam())S.settings.owners=ow;
+  S.sync={at:row.updated_at,hash:sbHash(sbPayload())};S.pdirty=false;S.dirty=teamDirty();
   save();render();setSb('ok')}
 async function sbPullFn(manual){
-  S.dirty=sbHash(sbPayload())!==(S.sync&&S.sync.hash);
+  await sbTeamStep(manual);sbCalcDirty();
   const r=await sbFetch(`/rest/v1/app_state?select=data,updated_at&user_id=eq.${encodeURIComponent(SB.uid)}`);
   if(r.status===404)throw new Error('http404');
   if(!r.ok)throw new Error('http'+r.status);
   const rows=await r.json();
-  if(!rows.length){ // 서버에 아직 없음 → 이 PC 데이터를 올림
-    S.sync={at:'',hash:''};S.dirty=true;return(sbHasData()||manual)?'push':(setSb('ok'),null)}
+  if(!rows.length){S.sync={at:'',hash:''};S.pdirty=true;S.dirty=true;return(sbHasData()||manual)?'push':(setSb('ok'),null)}
   const row=rows[0];
-  if(S.sync.at&&Date.parse(S.sync.at)===Date.parse(row.updated_at)){ // 서버 변경 없음
-    if(S.dirty)return 'push';setSb('ok');return null}
-  const localChanged=S.dirty&&sbHasData();
+  if(S.sync.at&&Date.parse(S.sync.at)===Date.parse(row.updated_at)){
+    if(S.pdirty)return 'push';setSb('ok');return null}
+  const localChanged=S.pdirty&&sbHasData();
   if(!localChanged){sbApply(row);return null}
-  // 양쪽 모두 바뀐 경우 → 선택
   if(document.hidden&&!manual){setSb('conflict');return null}
-  if(confirm('서버와 이 PC에 서로 다른 데이터가 있습니다.\n\n[확인] 서버 데이터를 불러옵니다.\n        (이 PC의 데이터는 백업 파일로 먼저 내려받습니다)\n[취소] 다음 단계로 이동합니다.')){
+  if(confirm('서버와 이 PC의 메모·설정이 서로 다릅니다.\n\n[확인] 서버 내용을 불러옵니다.\n        (이 PC 데이터는 백업 파일로 먼저 내려받습니다)\n[취소] 다음 단계로 이동합니다.')){
     try{await exportBackup()}catch(e){}
     sbApply(row);return null}
-  if(confirm('이 PC의 데이터로 서버 데이터를 덮어쓸까요?\n\n[확인] 서버에 있던 데이터가 사라집니다.\n[취소] 아무것도 바꾸지 않고 나중에 다시 결정합니다.')){
+  if(confirm('이 PC의 메모·설정으로 서버 내용을 덮어쓸까요?\n\n[확인] 서버에 있던 메모·설정이 사라집니다.\n[취소] 아무것도 바꾸지 않고 나중에 다시 결정합니다.')){
     S.sync={at:row.updated_at,hash:S.sync.hash};return 'push'}
   setSb('conflict');return null}
 async function sbPushFn(){
-  S.dirty=sbHash(sbPayload())!==(S.sync&&S.sync.hash);
-  if(!S.dirty&&S.sync.at){setSb('ok');return null}
+  await sbTeamStep(false);sbCalcDirty();
+  if(!S.pdirty&&S.sync.at){setSb('ok');return null}
   const data=sbPayload(),h=sbHash(data),body={data,updated_at:new Date().toISOString()};
   let r;
   if(!S.sync.at)r=await sbFetch('/rest/v1/app_state',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify(Object.assign({user_id:SB.uid},body))});
@@ -470,16 +573,17 @@ async function sbPushFn(){
   if(r.status===404)throw new Error('http404');
   if(!r.ok)throw new Error('http'+r.status);
   const rows=await r.json();
-  if(!rows.length)return 'pull'; // 그 사이 서버가 바뀜
+  if(!rows.length)return 'pull';
   S.sync={at:rows[0].updated_at,hash:h};save();
   if(S.dirty){sbSchedule()}else setSb('ok');
   return null}
 function openSync(){
   const on=!!SB,at=S.sync&&S.sync.at?new Date(S.sync.at):null,fmt=d=>d?`${ymd(d)} ${pad(d.getHours())}:${pad(d.getMinutes())}`:'아직 없음';
   $('#dlg').innerHTML=on?`<div class="in"><h2>클라우드 동기화</h2>
-   <p>로그인: <b>${esc(SB.email||'')}</b></p>
+   <p>로그인: <b>${esc(SB.email||'')}</b>${isTeam()?` · <b>${esc(S.team.me.display_name)}</b> (${S.team.me.role==='lead'?'팀장':'직원'})`:''}</p>
+   ${isTeam()?`<p class="muted">팀 공유 중 — 업무·부재는 팀원 전체에게 보이고, 메모·설정은 본인만 봅니다. 구성원: ${esc(S.team.list.map(x=>x.display_name).join(', '))}</p>`:''}
    <p class="muted">상태: <b>${({ok:'동기화됨',sync:'저장 중',idle:'확인 전',offline:'오프라인(이 PC에만 저장 중)',login:'재로그인 필요',conflict:'충돌 — [지금 동기화]로 해결'})[sbState]||sbState}</b><br>마지막 서버 저장: ${fmt(at)}<br>이 PC의 미전송 변경: ${S.dirty?'있음':'없음'}</p>
-   <p class="muted">서버에는 업무·부재·메모·설정만 저장됩니다. 캡처 이미지와 로고는 이 PC에만 있습니다. 공용 PC에서는 사용 후 로그아웃하세요.</p>
+   <p class="muted">캡처 이미지와 로고는 이 PC에만 있습니다. 공용 PC에서는 사용 후 로그아웃하세요.</p>
    <div class="foot"><button type="button" class="btn danger" data-act="syncOut" style="margin-right:auto">로그아웃</button><button type="button" class="btn" data-act="closeDlg">닫기</button><button type="button" class="btn primary" data-act="syncNow">지금 동기화</button></div></div>`
   :`<div class="in"><h2>클라우드 로그인</h2><form id="syncForm" autocomplete="on">
    <p class="muted">로그인하면 업무·부재·메모가 서버에 저장되어, 다른 PC에서도 같은 데이터를 쓸 수 있고 브라우저 데이터를 지워도 복구됩니다. 계정은 관리자가 미리 만들어 둔 것만 사용할 수 있습니다.</p>
@@ -496,7 +600,7 @@ async function sbLoginSubmit(f){
     msg.textContent=j.error_code==='email_not_confirmed'?'이메일 인증이 완료되지 않은 계정입니다. 관리자에게 문의하세요.':(r.status===400?'이메일 또는 비밀번호가 맞지 않습니다.':'로그인에 실패했습니다 ('+r.status+')');return}
   sbSetSess(await r.json(),email);$('#dlg').close();toast('로그인했습니다. 서버와 동기화합니다');
   await sbRun(()=>sbPullFn(true))}
-setInterval(()=>{if(SB&&!document.hidden&&sbState!=='conflict'&&sbState!=='login'&&!sbBusy)sbRun(S.dirty?sbPushFn:()=>sbPullFn(false))},120000);
+setInterval(()=>{if(SB&&!document.hidden&&sbState!=='conflict'&&sbState!=='login'&&!sbBusy)sbRun(S.dirty?sbPushFn:()=>sbPullFn(false))},60000);
 window.addEventListener('online',()=>{if(SB&&sbState!=='login')sbRun(S.dirty?sbPushFn:()=>sbPullFn(false))});
 
 
@@ -516,7 +620,7 @@ function info(t){
   const r={state:'nodue',d:null,check:''};
   if(t.due){const d=dayDiff(t.due,td);r.d=d;r.state=d<0?'over':d===0?'today':d<=s.soon?'soon':'later'}
   if(t.status==='보류'||!t.due)return r;
-  if(t.owner&&t.owner!==self()){
+  if(t.owner&&t.owner!==self()&&(!isTeam()||isLead())){
     const lc=t.lastCheck||t.created||td;
     const cps=s.offsets.map(o=>addDays(t.due,-o)).filter(c=>c<=td).sort();
     const cp=cps[cps.length-1];
@@ -561,7 +665,7 @@ function backupDue(){return S.tasks.length&&(!S.lastBackup||dayDiff(todayS(),S.l
 function render(){flushMemo();{const bb=$('#btnBackup');if(bb){const d=backupDue();bb.classList.toggle('due',!!d);bb.title=d?(S.lastBackup?dayDiff(todayS(),S.lastBackup)+'일째 백업하지 않았습니다 — 눌러서 백업 파일 받기':'아직 백업한 적이 없습니다 — 눌러서 백업 파일 받기'):'백업 파일 받기 (.json) · 마지막 백업 '+S.lastBackup}}renderNav();$('#main').innerHTML=({today:viewToday,owners:viewOwners,cal:viewCal,away:viewAway,all:viewAll,import:viewImport,settings:viewSettings})[view]();if(view==='import')paintCandidates()}
 
 /* ───────── 공통 조각 ───────── */
-const ownerOpts=(sel,blank)=>(blank!==undefined?`<option value="">${blank}</option>`:'')+[...new Set([...S.settings.owners,...(sel&&!S.settings.owners.includes(sel)?[sel]:[])])].map(o=>`<option ${o===sel?'selected':''}>${esc(o)}</option>`).join('');
+const ownerOpts=(sel,blank)=>(blank!==undefined?`<option value="">${blank}</option>`:'')+[...new Set([...(isTeam()&&!isLead()?[self()]:S.settings.owners),...(sel&&!S.settings.owners.includes(sel)?[sel]:[]),...(sel&&isTeam()&&!isLead()?[sel]:[])])].map(o=>`<option ${o===sel?'selected':''}>${esc(o)}</option>`).join('');
 const typeOpts=sel=>TYPES.map(o=>`<option ${o===sel?'selected':''}>${o}</option>`).join('');
 const statusOpts=sel=>STATUS.map(o=>`<option ${o===sel?'selected':''}>${o}</option>`).join('');
 const typeCls=t=>'t'+Math.max(0,TYPES.indexOf(t));
@@ -704,7 +808,7 @@ function viewAway(){
 }
 function openAbs(id,preset={}){
   const a0=id?S.absences.find(x=>x.id===id):null,d0=preset.day||AW.date||todayS();
-  const a=a0?{...a0}:{id:uid(),owner:preset.owner||S.settings.owners[1]||S.settings.owners[0],kind:'휴가',part:'종일',tStart:'',tEnd:'',start:d0,end:d0,note:''};
+  const a=a0?{...a0}:{id:uid(),owner:preset.owner||(isTeam()?self():(S.settings.owners[1]||S.settings.owners[0])),kind:'휴가',part:'종일',tStart:'',tEnd:'',start:d0,end:d0,note:''};
   EDIT={a,isNew:!a0};
   $('#dlg').innerHTML=`<div class="in"><h2>${a0?'부재 일정 수정':'휴가·출장·외출 등록'}</h2><form id="absForm" autocomplete="off">
   <div class="row"><label class="f">직원<select name="owner">${ownerOpts(a.owner)}</select></label>
@@ -1005,7 +1109,7 @@ function fireAlarm(title,lines,key){
 function closeAlarm(){$('#alarm').close();alarmItems=[];clearInterval(flashTimer);flashTimer=null;render()}
 function digest(kind){
   const b=buckets(),L=[];
-  const add=(h,l)=>l.length&&L.push(`${h} ${l.length}건: `+l.slice(0,4).map(x=>x.t.title+(x.t.owner&&x.t.owner!==self()?`(${x.t.owner})`:'')).join(' / ')+(l.length>4?' …':''));
+  const add=(h,l0)=>{const l=l0.filter(x=>mineScope(x.t));return l.length&&L.push(`${h} ${l.length}건: `+l.slice(0,4).map(x=>x.t.title+(x.t.owner&&x.t.owner!==self()?`(${x.t.owner})`:'')).join(' / ')+(l.length>4?' …':''))};
   add('🔴 기한 지남',b.over);add('🟠 오늘 마감',b.today);
   if(kind==='brief'){add('🔎 담당자 확인 필요',b.chk);add('🟡 임박',b.soon)}
   return L;
@@ -1017,7 +1121,7 @@ function tick(){
   if(due.length){due.forEach(([k])=>S.fired[`${k}-${td}`]=Date.now());changed=true;
     const [k,,label]=due[due.length-1],L=digest(k);if(L.length)fireAlarm(`${label} — ${fmtDate(td)}`,L,`${k}-${td}`)}
   S.tasks.forEach(t=>{
-    if(t.status==='완료'||t.status==='보류'||!t.due||!t.time||!(t.remind>0)||muted())return;
+    if(t.status==='완료'||t.status==='보류'||!t.due||!t.time||!(t.remind>0)||muted()||!mineScope(t))return;
     const at=new Date(`${t.due}T${t.time}:00`),fire=new Date(+at-t.remind*60000),key=`t-${t.id}-${t.due}-${t.time}`;
     if(now>=fire&&now<new Date(+at+3600000)&&!S.fired[key]){S.fired[key]=Date.now();changed=true;
       fireAlarm(`곧 시작: ${t.title}`,[`${fmtDate(t.due)} ${t.time}`,t.owner?`담당: ${t.owner}`:''].filter(Boolean),key)}});
@@ -1030,7 +1134,7 @@ let lastDay=todayS();
 /* ───────── 편집 대화상자 ───────── */
 function openEdit(id,preset){
   const src=id?S.tasks.find(t=>t.id===id):null;
-  EDIT={isNew:!src,t:src?JSON.parse(JSON.stringify(src)):newTask(preset||{owner:''}),removed:[]};
+  EDIT={isNew:!src,t:src?JSON.parse(JSON.stringify(src)):newTask(preset||{owner:isTeam()&&!isLead()?self():''}),removed:[]};
   const t=EDIT.t;
   $('#dlg').innerHTML=`<div class="in"><h2>${EDIT.isNew?'새 업무':'업무 편집'}</h2><form id="editForm" autocomplete="off">
   <label class="f">업무 제목<input type="text" name="title" value="${esc(t.title)}" required></label>
@@ -1076,8 +1180,8 @@ async function exportBackup(){
 }
 async function importBackup(file){
   try{const j=JSON.parse(await file.text());if(j.app!=='teamTracker'||!j.data)throw new Error('이 프로그램의 백업 파일이 아닙니다');
-    if(!confirm(`백업 파일(업무 ${j.data.tasks.length}건)로 현재 데이터를 모두 바꿉니다. 계속할까요?`))return;
-    const oldSync=S.sync;S=Object.assign(defaults(),j.data);S.settings=Object.assign(defaults().settings,S.settings||{});S.sync=oldSync||{at:'',hash:''};
+    if(!confirm(`백업 파일(업무 ${j.data.tasks.length}건)로 현재 데이터를 모두 바꿉니다. 계속할까요?`+(isTeam()?'\n\n⚠ 팀 공유 중입니다. 백업에 없는 업무는 서버에서도 삭제됩니다(삭제 권한이 있는 경우).':'')))return;
+    const oldSync=S.sync,oldTeam=[S.team,S.tm,S.tmInit,S.settings.owners];S=Object.assign(defaults(),j.data);S.settings=Object.assign(defaults().settings,S.settings||{});S.sync=oldSync||{at:'',hash:''};if(isTeam()){[S.team,S.tm,S.tmInit,S.settings.owners]=oldTeam}
     for(const [k,v] of Object.entries(j.images||{})){try{await idb.put(k,v)}catch(e){}}
     save();toast('백업을 불러왔습니다');render()}catch(e){toast('불러오기 실패: '+e.message,'err')}
 }
@@ -1175,7 +1279,7 @@ document.addEventListener('click',e=>{
 });
 document.addEventListener('submit',async e=>{
   const f=e.target;e.preventDefault();
-  if(f.id==='quick'){const d=new FormData(f);S.tasks.push(newTask({title:d.get('title').trim(),owner:d.get('owner'),due:d.get('due'),time:d.get('time')||'',type:d.get('type'),lastCheck:todayS()}));save();render();toast('추가했습니다');$('#quick input[name=title]')?.focus()}
+  if(f.id==='quick'){const d=new FormData(f);S.tasks.push(newTask({title:d.get('title').trim(),owner:d.get('owner')||(isTeam()&&!isLead()?self():''),due:d.get('due'),time:d.get('time')||'',type:d.get('type'),lastCheck:todayS()}));save();render();toast('추가했습니다');$('#quick input[name=title]')?.focus()}
   else if(f.id==='editForm'){const d=Object.fromEntries(new FormData(f)),t=EDIT.t;
     Object.assign(t,{title:d.title.trim(),type:d.type,owner:d.owner,due:d.due,time:d.time,remind:+d.remind,status:d.status,repeat:d.repeat,source:d.source.trim(),note:d.note});
     if(EDIT.isNew){t.lastCheck=todayS();S.tasks.push(t)}else{const i=S.tasks.findIndex(x=>x.id===t.id);const was=S.tasks[i];S.tasks[i]=t;if(was.status!=='완료'&&t.status==='완료')complete(t)}
