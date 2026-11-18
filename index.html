@@ -36,6 +36,7 @@ h3{font-size:15px;margin:0 0 8px}
 .btn.danger{color:var(--red)}
 .btn.sm{padding:4px 10px;font-size:13px}
 .ghost{border:1px solid var(--line);background:none;padding:6px 12px;border-radius:8px}
+.t24{display:inline-flex;gap:4px;align-items:center}.t24 select{padding:9px 4px;min-width:0;color:var(--ink,inherit)}.f .t24{display:flex}.f .t24 select{flex:1}.cand .t24{display:flex;width:100%}.cand .t24 select{flex:1;padding:4px 2px}
 input[type=text],input[type=date],input[type=time],input[type=number],select,textarea{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:7px 9px;max-width:100%}
 textarea{width:100%;min-height:90px}
 label.f{display:block;font-size:13px;color:var(--sub);margin-bottom:10px}
@@ -375,6 +376,10 @@ table.wk td{min-width:70px}
 'use strict';
 /* ───────── 기본 유틸 ───────── */
 const $=(s,r=document)=>r.querySelector(s);
+const T24H=Array.from({length:24},(_,i)=>String(i).padStart(2,'0')),T24M=['00','10','20','30','40','50'];
+const r10=v=>{const m=/^(\d\d):(\d\d)$/.exec(v||'');return m?`${m[1]}:${String(Math.floor(+m[2]/10)*10).padStart(2,'0')}`:''};
+function t24(attrs,val){val=val||'';const [h,m]=val.split(':');const ms=!m||T24M.includes(m)?T24M:[...T24M,m].sort();
+  return `<span class="t24"><select class="t24h" aria-label="시"><option value="">시</option>${T24H.map(x=>`<option value="${x}" ${x===h?'selected':''}>${x}시</option>`).join('')}</select><select class="t24m" aria-label="분"><option value="">분</option>${ms.map(x=>`<option value="${x}" ${h&&x===m?'selected':''}>${x}분</option>`).join('')}</select><input type="hidden" ${attrs} value="${esc(val)}"></span>`}
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const pad=n=>String(n).padStart(2,'0');
 const ymd=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
@@ -751,7 +756,7 @@ function viewToday(){
   <form class="quick" id="quick" autocomplete="off">
     <input type="text" name="title" placeholder="새 업무를 입력하고 Enter  (예: 11월 월간보고 자료 취합)" required>
     <select name="owner" title="담당자">${ownerOpts('', '담당자')}</select>
-    <input type="date" name="due" title="기한"><input type="time" name="time" title="시각(선택)">
+    <input type="date" name="due" title="기한">${t24('name="time" title="시각(선택)"','')}
     <select name="type" title="구분">${typeOpts(TYPES[1])}</select>
     <button class="btn primary">추가</button></form>
   <div class="duo">${absPanel()}${memoBox(todayS())}</div>
@@ -790,7 +795,7 @@ function memoBox(ds){
   const n=new Date(),hm=`${pad(n.getHours())}:${pad(n.getMinutes())}`;
   return `<div class="panel memo"><h3>📝 ${fmtDate(ds)} 메모장 <span class="muted" id="memoState" style="font-weight:400">자동 저장</span></h3>
   <textarea id="memoTa" data-date="${ds}" placeholder="일정과 상관없이 하루 한 장에 적어 두세요. [지금 시각]을 누르면 새 줄 앞에 시각이 들어갑니다.">${esc(S.memos[ds]||'')}</textarea>
-  <div class="memo-bar"><button class="btn sm primary" data-act="memoNow">⏱ 지금 시각 넣기</button><span class="muted">또는</span><input type="time" id="memoT" value="${hm}"><button class="btn sm" data-act="memoAt">이 시각 넣기</button></div>
+  <div class="memo-bar"><button class="btn sm primary" data-act="memoNow">⏱ 지금 시각 넣기</button><span class="muted">또는</span>${t24('id="memoT"',r10(hm))}<button class="btn sm" data-act="memoAt">이 시각 넣기</button></div>
   <div class="memo-bar memo-save"><button class="btn sm primary" data-act="memoSave" title="Ctrl+S">💾 저장</button><button class="btn sm" data-act="memoTxt">📄 텍스트 파일(.txt)로 저장</button><span class="muted">입력하면 자동 저장되며, 저장 버튼을 누르면 즉시 확정하고 서버로도 보냅니다.</span></div></div>`;
 }
 let memoTimer=null;
@@ -845,7 +850,7 @@ function openAbs(id,preset={}){
   <label class="f">종류<select name="kind">${ABS_KINDS.map(k=>`<option ${k===a.kind?'selected':''}>${k}</option>`).join('')}</select></label></div>
   <div class="row"><label class="f">시작일<input type="date" name="start" value="${a.start}" required></label><label class="f">종료일<input type="date" name="end" value="${a.end}" required></label></div>
   <label class="f">구분<select name="part">${['종일','오전','오후','시간'].map(k=>`<option value="${k}" ${k===a.part?'selected':''}>${k==='시간'?'시간 지정 (외출 등)':k}</option>`).join('')}</select></label>
-  <div class="row" id="absTimes" ${a.part==='시간'?'':'hidden'}><label class="f">시작 시각<input type="time" name="tStart" value="${a.tStart}"></label><label class="f">종료 시각<input type="time" name="tEnd" value="${a.tEnd}"></label></div>
+  <div class="row" id="absTimes" ${a.part==='시간'?'':'hidden'}><label class="f">시작 시각${t24('name="tStart"',a.tStart)}</label><label class="f">종료 시각${t24('name="tEnd"',a.tEnd)}</label></div>
   <label class="f">메모 (행선지·대체 담당 등)<input type="text" name="note" value="${esc(a.note)}"></label>
   <div class="foot">${a0?'<button type="button" class="btn danger" data-act="delAbs" style="margin-right:auto">삭제</button>':''}<button type="button" class="btn" data-act="closeDlg">취소</button><button class="btn primary">저장</button></div></form></div>`;
   $('#dlg').showModal();
@@ -926,8 +931,8 @@ function viewSettings(){
   <div class="panel"><h3>담당자 목록</h3><p class="muted">한 줄에 한 명. <b>첫 줄은 팀장 본인</b>(확인 알림 대상에서 제외)입니다. 이름 대신 "담당자 A", "시설팀장"처럼 직책·코드로 두면 화면을 공유할 때도 안전합니다.</p>
     <textarea id="s_owners">${esc(s.owners.join('\n'))}</textarea></div>
   <div class="panel"><h3>알림 규칙</h3><div class="row">
-    <label class="f">아침 점검 알림<input type="time" id="s_brief" value="${s.briefTime}"></label>
-    <label class="f">오후 재알림 (지연·오늘 마감만)<input type="time" id="s_after" value="${s.afterTime}"></label>
+    <label class="f">아침 점검 알림${t24('id="s_brief"',s.briefTime)}</label>
+    <label class="f">오후 재알림 (지연·오늘 마감만)${t24('id="s_after"',s.afterTime)}</label>
     <label class="f">임박 기준(일)<input type="number" id="s_soon" min="1" max="14" value="${s.soon}"></label></div>
   <div class="row"><label class="f">담당자 확인 시점 (마감 며칠 전, 쉼표로 구분)<input type="text" id="s_off" value="${s.offsets.join(',')}"></label>
     <label class="f">확인 기록이 없으면 알릴 간격(일)<input type="number" id="s_stale" min="1" max="14" value="${s.stale}"></label></div>
@@ -993,7 +998,7 @@ function paintCandidates(){
     <button class="btn primary" data-act="regCands">선택한 ${vis.filter(c=>c.checked&&!c.dup).length}건 등록</button></div>
   ${groups.map(g=>`<div class="cand-g"><header><input type="checkbox" data-act="grpTog" data-gk="${esc(g.k)}" ${g.list.every(c=>c.checked)?'checked':''}> ${esc(g.title)}</header>
     ${g.list.map(c=>`<div class="cand ${c.dup?'dup':''} ${c.past?'past':''}" data-cid="${c.id}"><input type="checkbox" data-f="checked" ${c.checked&&!c.dup?'checked':''} ${c.dup?'disabled':''}>
-      <input type="text" data-f="title" value="${esc(c.title)}" title="${esc(c.note)}"><input type="date" data-f="due" value="${c.due}"><input type="time" data-f="time" value="${c.time}">
+      <input type="text" data-f="title" value="${esc(c.title)}" title="${esc(c.note)}"><input type="date" data-f="due" value="${c.due}">${t24('data-f="time"',c.time)}
       <select data-f="owner">${ownerOpts(c.owner,'담당자')}</select></div>${c.dup?'<div class="muted" style="padding:0 10px 4px 42px">이미 등록된 업무입니다</div>':''}`).join('')}</div>`).join('')||'<p class="muted">표시할 후보가 없습니다. 위 필터를 확인하세요.</p>'}</div>`;
 }
 
@@ -1184,7 +1189,7 @@ function openEdit(id,preset){
   <div class="row"><label class="f">시작일 <span class="muted">(연속 일정일 때만)</span><input type="date" name="start" value="${t.start||''}"></label>
     <label class="f">기한 <span class="muted">(연속이면 종료일)</span><input type="date" name="due" value="${t.due}"></label></div>
   <div class="f">띠 색상 <span class="muted">(달력의 연속 일정 띠)</span><div class="swatches"><label class="sw auto" title="기한 상태에 따라 자동 (빨강·주황·노랑·회색)"><input type="radio" name="color" value="" ${okColor(t.color)?'':'checked'}><span>자동</span></label>${BAND_COLORS.map(([c,n])=>`<label class="sw" title="${n}"><input type="radio" name="color" value="${c}" ${(t.color||'').toLowerCase()===c?'checked':''}><span style="background:${c}"></span></label>`).join('')}</div></div>
-  <div class="row"><label class="f">시각 (선택)<input type="time" name="time" value="${t.time}"></label>
+  <div class="row"><label class="f">시각 (선택)${t24('name="time"',t.time)}</label>
     <label class="f">시각 알림<select name="remind">${[[0,'없음'],[10,'10분 전'],[30,'30분 전'],[60,'1시간 전'],[1440,'하루 전']].map(([v,l])=>`<option value="${v}" ${+t.remind===v?'selected':''}>${l}</option>`).join('')}</select></label></div>
   <div class="row"><label class="f">상태<select name="status">${statusOpts(t.status)}</select></label>
     <label class="f">반복<select name="repeat">${[['','없음'],['weekly','매주'],['monthly','매월']].map(([v,l])=>`<option value="${v}" ${t.repeat===v?'selected':''}>${l}</option>`).join('')}</select></label></div>
@@ -1357,7 +1362,12 @@ document.addEventListener('input',e=>{const t=e.target;
   if(t.id==='fq'){FLT.q=t.value;const p=t.selectionStart;render();const n=$('#fq');n.focus();n.setSelectionRange(p,p)}
   const row=t.closest?.('.cand');if(row){const c=IMP.cands.find(x=>x.id===row.dataset.cid),f=t.dataset.f;if(c&&f){c[f]=f==='checked'?t.checked:t.value;if(f==='checked'||f==='due'){markDup([c]);}}}
 });
-document.addEventListener('change',e=>{const t=e.target;
+document.addEventListener('change',e=>{const sl=e.target;
+  if(sl.matches&&sl.matches('.t24 select')){const w=sl.closest('.t24'),h=w.querySelector('.t24h'),m=w.querySelector('.t24m'),hid=w.querySelector('input');
+    if(sl.classList.contains('t24h')){if(!h.value)m.value='';else if(!m.value)m.value='00'}
+    hid.value=h.value?`${h.value}:${m.value||'00'}`:'';
+    hid.dispatchEvent(new Event('input',{bubbles:true}));hid.dispatchEvent(new Event('change',{bubbles:true}));return}
+  const t=e.target;
   if(t.id==='fo'){FLT.owner=t.value;render()}if(t.id==='ft'){FLT.type=t.value;render()}if(t.id==='fs'){FLT.status=t.value;render()}
   if(t.id==='cPast'){IMP.hidePast=t.checked;paintCandidates()}if(t.id==='cRes'){IMP.inclResult=t.checked;paintCandidates()}
   if(t.id==='cOwner'){IMP.owner=t.value;IMP.cands.forEach(c=>{if(t.value)c.owner=t.value});paintCandidates()}if(t.id==='cType'){IMP.type=t.value}
