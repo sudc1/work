@@ -335,6 +335,7 @@ table.wk .abs{display:block;text-align:center;padding:3px 6px;margin:2px 0;font-
 .abs-day h4{margin:8px 0 0}
 table.wk .abs{display:inline-flex;margin:1px;padding:0 6px;font-size:12px}
 table.wk td{min-width:70px}
+.abs.multi{white-space:normal;flex-wrap:wrap}.abs .nms{display:inline}.abs .nm{cursor:pointer;border-radius:3px}.abs .nm:hover,.abs .nm:focus-visible{text-decoration:underline;outline:none}
 
 /* v5.5: 달력 칸 부재 표시 — 일반 일정보다 작게 */
 .cal .ab-line{display:flex;flex-wrap:wrap;gap:1px 2px;margin-top:2px}
@@ -774,6 +775,15 @@ let AW={date:todayS()};
 const absencesOn=(ds,owner)=>S.absences.filter(a=>a.start<=ds&&ds<=a.end&&(!owner||a.owner===owner));
 const absLabel=a=>a.part==='시간'?`${a.tStart||''}~${a.tEnd||''}`:a.part;
 const absSort=(a,b)=>(a.part==='시간'?a.tStart||'00:00':'00:00').localeCompare(b.part==='시간'?b.tStart||'00:00':'00:00');
+const ownerIdx=o=>{const i=S.settings.owners.indexOf(o);return i<0?999:i};
+function absGroups(list){const m=new Map();
+  list.forEach(a=>{const k=[a.kind,a.part,a.part==='시간'?(a.tStart||'')+'~'+(a.tEnd||''):'',a.start!==a.end?a.start+'~'+a.end:''].join('|');if(!m.has(k))m.set(k,[]);m.get(k).push(a)});
+  return [...m.values()].map(g=>g.sort((x,y)=>ownerIdx(x.owner)-ownerIdx(y.owner)||String(x.owner).localeCompare(String(y.owner))))}
+function absChipG(g){if(g.length===1)return absChip(g[0]);const a=g[0];
+  const when=a.start!==a.end?` <small>(${noYear(a.start)}~${noYear(a.end)})</small>`:'';
+  const tm=a.part==='시간'?`<span class="tm">${esc(a.tStart||'시간')}</span>`:`<span class="tm all">${esc(a.part)}</span>`;
+  const names=g.map(x=>`<b class="nm" role="button" tabindex="0" data-act="editAbs" data-id="${x.id}" title="${esc(x.owner)} — 눌러서 수정">${esc(x.owner)}</b>`).join(', ');
+  return `<span class="abs multi ${absCls(a.kind)}" title="${esc(g.map(x=>x.owner).join(', ')+' '+a.kind+' '+(a.part==='시간'?(a.tStart||'')+'~'+(a.tEnd||''):a.part)+(a.start!==a.end?' ('+a.start+'~'+a.end+')':''))}">${tm}<span class="nms">${names}</span> ${esc(a.kind)}${a.part==='시간'&&a.tEnd?`~${esc(a.tEnd)}`:''}${when}</span>`}
 function absChip(a){
   const when=a.start!==a.end?` <small>(${noYear(a.start)}~${noYear(a.end)})</small>`:'';
   const tm=a.part==='시간'?`<span class="tm">${esc(a.tStart||'시간')}</span>`:`<span class="tm all">${esc(a.part)}</span>`;
@@ -788,7 +798,7 @@ function absWarn(t){
   return '';
 }
 function absPanel(){
-  const td=todayS(),sec=(label,ds)=>{const l=absencesOn(ds).sort(absSort);return `<div class="abs-day"><h4>${label} <span class="muted">${fmtDate(ds)}</span></h4><div class="abs-wrap">${l.map(absChip).join('')||'<span class="muted">부재 없음</span>'}</div></div>`};
+  const td=todayS(),sec=(label,ds)=>{const l=absencesOn(ds).sort(absSort);return `<div class="abs-day"><h4>${label} <span class="muted">${fmtDate(ds)}</span></h4><div class="abs-wrap">${absGroups(l).map(absChipG).join('')||'<span class="muted">부재 없음</span>'}</div></div>`};
   return `<div class="panel"><h3>👥 직원 부재 현황 <button class="btn sm" data-act="newAbs" style="float:right">＋ 휴가·출장·외출</button></h3>${sec('오늘',td)}${sec('내일',addDays(td,1))}</div>`;
 }
 function memoBox(ds){
@@ -822,7 +832,7 @@ function insertTime(hm){
 }
 function dayExtra(ds){
   const l=absencesOn(ds).sort(absSort),m=S.memos[ds];
-  return `<h3 style="margin-top:16px">${fmtDate(ds)} 부재·메모 <button class="btn sm" data-act="newAbs" data-day="${ds}">＋ 부재 등록</button> <button class="btn sm" data-act="openDay" data-day="${ds}">📝 메모장 열기</button></h3><div class="abs-wrap">${l.map(absChip).join('')||'<span class="muted">등록된 부재가 없습니다.</span>'}</div>${m?`<div class="c-note" style="background:var(--card);padding:8px 12px;border-radius:8px;margin-top:8px">${esc(m.length>240?m.slice(0,240)+'…':m)}</div>`:''}`;
+  return `<h3 style="margin-top:16px">${fmtDate(ds)} 부재·메모 <button class="btn sm" data-act="newAbs" data-day="${ds}">＋ 부재 등록</button> <button class="btn sm" data-act="openDay" data-day="${ds}">📝 메모장 열기</button></h3><div class="abs-wrap">${absGroups(l).map(absChipG).join('')||'<span class="muted">등록된 부재가 없습니다.</span>'}</div>${m?`<div class="c-note" style="background:var(--card);padding:8px 12px;border-radius:8px;margin-top:8px">${esc(m.length>240?m.slice(0,240)+'…':m)}</div>`:''}`;
 }
 function viewAway(){
   const ds=AW.date,td=todayS(),w0=addDays(ds,-((parseYmd(ds).getDay()+6)%7)),days=[...Array(7)].map((_,i)=>addDays(w0,i));
@@ -832,7 +842,7 @@ function viewAway(){
     return `<td class="${l.length?'':'emp'} ${c}" data-act="newAbs" data-owner="${esc(n)}" data-day="${d}">${l.map(a=>`<button class="abs ${absCls(a.kind)}" data-act="editAbs" data-id="${a.id}">${esc(a.kind)}${a.part!=='종일'?` <small>${esc(absLabel(a))}</small>`:''}</button>`).join('')}</td>`}).join('')}</tr>`).join('');
   const items=[];
   S.tasks.filter(t=>onDay(t,ds)&&t.status!=='완료').forEach(t=>items.push({k:(t.due===ds&&t.time)||'00:00',all:!(t.due===ds&&t.time),h:`<div class="tl" data-act="edit" data-id="${t.id}">${tmBadge(t)}<span><b>${esc(t.title)}</b> <small class="muted">${esc(t.owner||'')}${rangeOf(t)?' · '+rangeTxt(t):''}</small></span></div>`}));
-  absencesOn(ds).forEach(a=>items.push({k:a.part==='시간'?a.tStart||'00:00':'00:00',all:a.part!=='시간',h:`<div class="abs-wrap">${absChip(a)}</div>`}));
+  absGroups(absencesOn(ds).sort(absSort)).forEach(g=>{const a=g[0];items.push({k:a.part==='시간'?a.tStart||'00:00':'00:00',all:a.part!=='시간',h:`<div class="abs-wrap">${absChipG(g)}</div>`})});
   items.sort((a,b)=>(b.all-a.all)||a.k.localeCompare(b.k));
   return `<h2>근태·메모</h2>
   <div class="datebar"><button class="btn sm" data-act="awMove" data-n="-1">◀</button><input type="date" id="awDate" value="${ds}"><button class="btn sm" data-act="awMove" data-n="1">▶</button><button class="btn sm" data-act="awMove" data-n="0">오늘</button><span class="grow"></span><button class="btn primary" data-act="newAbs">＋ 휴가·출장·외출 등록</button></div>
@@ -895,7 +905,7 @@ function viewCal(){
   for(let c=0;c<rows*7;c++){
     const n=c-first+1;if(n<1||n>days){h+='<div class="d x"></div>';continue}
     const ds=`${y}-${pad(m)}-${pad(n)}`,ts=map[ds]||[];
-    h+=`<div class="d ${ds===td?'td':''} ${ds===CAL.sel?'sel':''} ${c%7===0?'sun':''}" data-act="pickDay" data-day="${ds}"><span class="num">${n}</span>${S.memos[ds]?'<span class="memo-dot" title="메모 있음">📝</span>':''}<div class="ab-line">${absencesOn(ds).slice(0,4).map(a=>`<span class="ev abs ${absCls(a.kind)}" data-act="editAbs" data-id="${a.id}" title="${esc(a.owner+' '+a.kind+(a.part!=='종일'?' '+(a.part==='시간'?(a.tStart||'')+'~'+(a.tEnd||''):a.part):''))}">${esc(a.owner)} ${esc(a.kind)}</span>`).join('')}${absencesOn(ds).length>4?`<span class="ev abs more">+${absencesOn(ds).length-4}</span>`:''}</div>${bandsOf(ds,c,n)}
+    h+=`<div class="d ${ds===td?'td':''} ${ds===CAL.sel?'sel':''} ${c%7===0?'sun':''}" data-act="pickDay" data-day="${ds}"><span class="num">${n}</span>${S.memos[ds]?'<span class="memo-dot" title="메모 있음">📝</span>':''}<div class="ab-line">${(()=>{const G=absGroups(absencesOn(ds).sort(absSort));return G.slice(0,4).map(g=>{const a=g[0],nm=g.map(x=>x.owner).join(', '),tt=esc(nm+' '+a.kind+(a.part!=='종일'?' '+(a.part==='시간'?(a.tStart||'')+'~'+(a.tEnd||''):a.part):''));return `<span class="ev abs ${absCls(a.kind)}" ${g.length===1?`data-act="editAbs" data-id="${a.id}" `:''}title="${tt}">${esc(nm)} ${esc(a.kind)}</span>`}).join('')+(G.length>4?`<span class="ev abs more">+${G.length-4}</span>`:'')})()}</div>${bandsOf(ds,c,n)}
       ${ts.slice(0,3).map(t=>`<span class="ev ${info(t).state}" data-act="edit" data-id="${t.id}" title="${esc((t.time||'종일')+' '+t.title)}">${t.time?`<b>${t.time}</b> `:''}${esc(t.title)}</span>`).join('')}${ts.length>3?`<span class="muted" style="font-size:12px">+${ts.length-3}건</span>`:''}</div>`;
   }
   const dayTasks=S.tasks.filter(t=>onDay(t,CAL.sel)).sort(cmpDT);
