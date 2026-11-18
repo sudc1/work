@@ -325,6 +325,40 @@ table.wk .abs{display:block;text-align:center;padding:3px 6px;margin:2px 0;font-
 @media(max-width:820px){.duo{grid-template-columns:1fr}.lb{display:none}.lbs{display:block}.cal .ev.a0{background:var(--green)}.cal .ev.a1{background:var(--blue)}.cal .ev.a2{background:#c9a100}.cal .memo-dot{display:none}
  .quick{grid-template-columns:1fr 1fr}.tl{flex-wrap:wrap}}
 
+
+/* ===== 팀 쪽지 ===== */
+#btnMsg[hidden],.msg-bdg[hidden]{display:none!important}
+#btnMsg{position:relative}
+.msg-bdg{background:var(--red);color:#fff;border-radius:10px;padding:0 6px;font-size:11px;font-style:normal;font-weight:700;line-height:17px;margin-left:4px;min-width:17px;text-align:center;display:inline-block}
+#msgDlg{width:min(900px,96vw);height:min(660px,88vh);overflow:hidden}
+.msgbox{display:flex;flex-direction:column;height:100%}
+.msg-head{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line)}.msg-head .muted{flex:1;font-size:12.5px}
+.msg-cols{display:grid;grid-template-columns:230px 1fr;flex:1;min-height:0}
+.msg-list{border-right:1px solid var(--line);overflow:auto;padding:8px}
+.msg-th{display:flex;flex-wrap:wrap;align-items:center;gap:2px 4px;width:100%;text-align:left;border:0;background:none;border-radius:10px;padding:9px 10px;cursor:pointer}
+.msg-th:hover{background:var(--bg)}.msg-th.on{background:var(--bluebg)}
+.msg-th .who{font-weight:700;flex:1}.msg-th small{flex-basis:100%;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.msg-main{display:flex;flex-direction:column;min-width:0;min-height:0}
+.msg-title{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line)}.msg-back{display:none}
+.msg-log{flex:1;overflow:auto;padding:12px 14px;display:flex;flex-direction:column;gap:8px;background:var(--bg)}
+.msg-bb{max-width:78%;align-self:flex-start;background:var(--card);border:1px solid var(--line);border-radius:12px 12px 12px 2px;padding:7px 11px}
+.msg-bb.me{align-self:flex-end;background:var(--bluebg);border-color:transparent;border-radius:12px 12px 2px 12px}
+.msg-bb .tx{white-space:pre-wrap;word-break:break-word}.msg-bb small{color:var(--sub);font-size:11px;display:block}.msg-bb .who{font-weight:700;color:var(--ink)}
+.msg-lnk{border:0;background:none;color:var(--sub);cursor:pointer;font-size:11px;text-decoration:underline;padding:0}
+#msgForm{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--line);align-items:flex-end}
+#msgForm textarea{flex:1;resize:none;border:1px solid var(--line);background:var(--card);border-radius:10px;padding:8px 10px}
+#msgPop{position:fixed;right:16px;bottom:16px;z-index:60;display:flex;flex-direction:column;gap:8px;max-width:min(340px,calc(100vw - 32px))}
+.msg-pop{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--brand);border-radius:12px;padding:10px 12px;box-shadow:0 8px 28px rgba(0,0,0,.28);animation:up .25s both}
+.msg-pop .mtx{margin:4px 0 8px;white-space:pre-wrap;word-break:break-word;color:var(--ink)}.msg-pop .mbt{display:flex;gap:6px;justify-content:flex-end}
+@media(max-width:820px){
+  #msgDlg{width:100vw;height:92vh;max-width:100vw}
+  .msg-cols{grid-template-columns:1fr}
+  .msgbox:not(.inth) .msg-main{display:none}.msgbox.inth .msg-list{display:none}
+  .msg-back{display:inline-block;white-space:nowrap}.msg-title b{font-size:14px}.msg-head .muted{display:none}
+  #msgForm textarea{font-size:16px}
+  #msgPop{bottom:calc(76px + env(safe-area-inset-bottom));right:8px;left:8px;max-width:none}
+}
+
 /* ===== v5.4: 부재 칩 소형화 · 한 줄 다인 표시 ===== */
 .abs-wrap{display:flex;flex-wrap:wrap;gap:4px 6px;margin-top:6px;align-items:center}
 .abs-wrap .muted{font-size:13px}
@@ -356,6 +390,7 @@ table.wk td{min-width:70px}
   <button class="ghost" id="btnTheme" data-act="theme" title="화면 색상 전환"></button>
   <button class="ghost" data-act="help" title="단축키 (?)"><span class="ic">⌨</span><span class="tx">도움말</span></button>
   <button class="ghost" id="btnBackup" data-act="export" title="백업 파일 받기 (.json)"><span class="ic">💾</span><span class="tx">백업</span></button>
+  <button class="ghost" id="btnMsg" data-act="msgOpen" title="팀 쪽지" hidden><span class="ic">💬</span><span class="tx">쪽지</span><i class="msg-bdg" id="msgBdg" hidden></i></button>
   <button class="ghost" id="btnSync" data-act="syncBtn" title="클라우드 동기화"></button>
   <button class="ghost" id="btnAlarm" data-act="alarmBtn"></button>
   <button class="btn primary" data-act="new">＋ 새 업무</button>
@@ -367,6 +402,13 @@ table.wk td{min-width:70px}
 <footer class="foot-ci"><img alt="수원을 새롭게 시민을 빛나게" src="data:image/png;base64,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"><span>수원의 미래가치 디자인하는 수원도시공사</span></footer>
 <button class="fab" data-act="new" aria-label="새 업무">＋</button>
 <div id="alarmMenu" class="menu" hidden></div>
+<dialog id="msgDlg"><div class="msgbox" id="msgBox">
+  <div class="msg-head"><b>💬 팀 쪽지</b><span class="muted">개인 쪽지는 보낸 사람과 받는 사람만 볼 수 있습니다</span><button type="button" class="btn sm" data-act="msgClose">닫기</button></div>
+  <div class="msg-cols"><div class="msg-list" id="mList"></div>
+    <div class="msg-main"><div class="msg-title"><button type="button" class="btn sm msg-back" data-act="msgBack">← 목록</button><b id="mTitle"></b></div>
+      <div class="msg-log" id="mLog"></div>
+      <form id="msgForm" autocomplete="off"><textarea id="mText" rows="2" maxlength="1000" placeholder="쪽지를 입력하세요 (Enter 전송 · Shift+Enter 줄바꿈)"></textarea><button class="btn primary">보내기</button></form></div></div></div></dialog>
+<div id="msgPop" aria-live="polite"></div>
 <dialog id="dlg"></dialog>
 <dialog id="alarm"><div class="in"><h2>🔔 확인이 필요한 업무가 있습니다</h2><div id="alarmList"></div>
   <div class="foot"><button class="btn" data-act="alarmSnooze">10분 뒤 다시 알림</button><button class="btn primary" data-act="alarmOk">확인했습니다</button></div></div></dialog>
@@ -429,7 +471,7 @@ function paintSync(){const b=$('#btnSync');if(!b)return;
   b.classList.toggle('bad',['offline','login','conflict'].includes(sbState));
   b.title=sbMsg||({off:'로그인하면 여러 PC에서 같은 데이터를 쓰고, 브라우저 데이터를 지워도 복구됩니다',ok:'서버와 동기화되어 있습니다',offline:'인터넷 연결이 없어 이 PC에만 저장 중입니다. 연결되면 자동으로 올립니다',login:'로그인이 만료되었습니다. 다시 로그인하세요',conflict:'서버와 이 PC의 데이터가 서로 다릅니다. 눌러서 해결하세요'}[sbState]||'클라우드 동기화')}
 function sbSetSess(j,email){SB={at:j.access_token,rt:j.refresh_token,exp:Date.now()+(j.expires_in||3600)*1000,uid:(j.user&&j.user.id)||(SB&&SB.uid)||'',email:email||(j.user&&j.user.email)||(SB&&SB.email)||''};store.set(SB_SESS,JSON.stringify(SB))}
-function sbLogout(){SB=null;store.set(SB_SESS,'');clearTimeout(sbTimer);teamLoaded=false;setSb('off')}
+function sbLogout(){msgReset();SB=null;store.set(SB_SESS,'');clearTimeout(sbTimer);teamLoaded=false;setSb('off')}
 async function sbToken(){
   if(!SB)throw new Error('login');
   if(SB.exp-Date.now()<60000){
@@ -471,7 +513,7 @@ async function teamLoad(){
   if(!me){S.team=null;return}                               // 프로필이 없으면 개인 모드
   S.team={me,list:rows};
   S.settings.owners=[me.display_name,...rows.filter(x=>x.user_id!==me.user_id).map(x=>x.display_name)];
-  save();render()}
+  save();render();msgStart()}
 function teamKeep(c,x,why){S.conflicts=(S.conflicts||[]).slice(-29);S.conflicts.push({at:new Date().toISOString(),table:c.table,why,data:x})}
 async function teamSyncOne(c,notes){
   const m=tmeta(c.k),eq=(a,b)=>!!a&&!!b&&Date.parse(a)===Date.parse(b),enc=encodeURIComponent;
@@ -1300,6 +1342,12 @@ const actions={
     S=defaults();save();render();toast('이 PC의 데이터를 삭제했습니다. 클라우드에 올라간 데이터는 남아 있으며, 다시 로그인하면 복구됩니다')},
   syncBtn(){openSync()},
   goExt(id,b){window.open(b.dataset.url,'_blank','noopener')},
+  msgOpen(id,b){msgOpenUi(b&&b.dataset?b.dataset.th:'')},
+  msgPick(id,b){MSG.thread=b.dataset.th;$('#msgBox').classList.add('inth');msgPanel(true);setTimeout(()=>{const t=$('#mText');if(t&&innerWidth>820)t.focus()},50)},
+  msgBack(){$('#msgBox').classList.remove('inth');msgPanel()},
+  msgClose(){$('#msgDlg').close()},
+  msgPopX(id,b){MSG.pops=MSG.pops.filter(p=>p.th!==b.dataset.th);msgPopPaint()},
+  msgDel(id,b){msgDelete(b.dataset.id)},
   syncNow(){$('#dlg').close();sbRun(()=>sbPullFn(true))},
   syncOut(){if(S.dirty&&!confirm('서버로 아직 보내지 못한 변경이 있습니다. 로그아웃해도 이 PC에는 남아 있지만, 서버에는 반영되지 않습니다. 계속할까요?'))return;sbLogout();$('#dlg').close();toast('로그아웃했습니다. 이 PC의 데이터는 그대로 남아 있습니다')},
   async makeTemplate(){
@@ -1513,15 +1561,113 @@ document.addEventListener('focusin',e=>{if(e.target.id==='memoTa')e.target.datas
 document.addEventListener('focusout',e=>{if(e.target.id==='memoTa')flushMemo()});
 window.addEventListener('pagehide',flushMemo);window.addEventListener('beforeunload',flushMemo);
 /* ───────── 시작 ───────── */
+/* ── 팀 쪽지: 개인↔개인 · 개인→전체 (약 10초마다 확인, 창이 열려 있을 때 팝업) ── */
+const MSG={ready:false,absent:false,msgs:[],ids:new Set(),reads:{},cursor:'',busy:false,thread:'all',primed:false,lastFull:0,pops:[]};
+const msgMe=()=>(SB&&SB.uid)||'';
+const msgTh=m=>m.recipient_id?(m.sender_id===msgMe()?m.recipient_id:m.sender_id):'all';
+const msgName=uid=>{const p=S.team&&S.team.list.find(x=>x.user_id===uid);return p?p.display_name:'(알 수 없음)'};
+const msgTs=m=>Date.parse(m.created_at)||0;
+const msgThreads=()=>['all',...(S.team?S.team.list.filter(x=>x.user_id!==msgMe()).map(x=>x.user_id):[])];
+const msgReadTs=th=>Date.parse(MSG.reads[th]||'')||0;
+const msgUnread=th=>MSG.msgs.filter(m=>m.sender_id!==msgMe()&&msgTh(m)===th&&msgTs(m)>msgReadTs(th)).length;
+const msgUnreadAll=()=>msgThreads().reduce((n,t)=>n+msgUnread(t),0);
+const msgFmt=iso=>{const x=new Date(iso);return `${pad(x.getMonth()+1)}.${pad(x.getDate())} ${pad(x.getHours())}:${pad(x.getMinutes())}`};
+const msgMobile=()=>innerWidth<=820;
+function msgReset(){MSG.ready=false;MSG.absent=false;MSG.msgs=[];MSG.ids=new Set();MSG.reads={};MSG.cursor='';MSG.primed=false;MSG.lastFull=0;MSG.pops=[];MSG.thread='all';
+  try{$('#msgDlg').close()}catch(e){}msgPopPaint();msgBadge()}
+function msgStart(){MSG.absent=false;msgPoll(true)}
+function msgSet(rows,full){
+  const old=new Set(MSG.ids),fresh=[];
+  if(full){MSG.msgs=[];MSG.ids=new Set()}
+  rows.forEach(r=>{if(MSG.ids.has(r.id))return;MSG.ids.add(r.id);MSG.msgs.push(r);if(!old.has(r.id))fresh.push(r)});
+  MSG.msgs.sort((a,b)=>msgTs(a)-msgTs(b)||String(a.id).localeCompare(b.id));
+  if(MSG.msgs.length)MSG.cursor=MSG.msgs[MSG.msgs.length-1].created_at;
+  return fresh}
+async function msgPoll(force){
+  if(!SB||!isTeam()||MSG.busy||MSG.absent||sbState==='login')return;MSG.busy=true;
+  try{
+    const full=force||!MSG.primed||Date.now()-MSG.lastFull>300000,sel='select=id,sender_id,recipient_id,body,created_at';
+    const r=await sbFetch(full||!MSG.cursor?`/rest/v1/team_messages?${sel}&order=created_at.desc&limit=200`:`/rest/v1/team_messages?${sel}&created_at=gte.${encodeURIComponent(MSG.cursor)}&order=created_at.asc&limit=200`);
+    if(r.status===404||r.status===406){MSG.absent=true;MSG.ready=false;msgBadge();return}
+    if(!r.ok)throw new Error('http'+r.status);
+    const rows=await r.json();
+    if(full){const rr=await sbFetch('/rest/v1/team_message_reads?select=thread_key,read_at');if(rr.ok){MSG.reads={};(await rr.json()).forEach(x=>{MSG.reads[x.thread_key]=x.read_at})};MSG.lastFull=Date.now()}
+    const fresh=msgSet(rows,full);MSG.ready=true;
+    if(!MSG.primed){MSG.primed=true;const n=msgUnreadAll();if(n)msgPopShow('*','읽지 않은 쪽지',`${n}건이 있습니다`,1)}
+    else msgIncoming(fresh.filter(m=>m.sender_id!==msgMe()));
+    msgBadge();msgPanel();
+  }catch(e){/* 네트워크 오류는 조용히 다음 주기에 다시 시도 */}finally{MSG.busy=false}}
+function msgVisibleTh(){const d=$('#msgDlg');if(!d||!d.open||document.hidden)return null;if(msgMobile()&&!$('#msgBox').classList.contains('inth'))return null;return MSG.thread}
+function msgIncoming(list){
+  if(!list.length)return;const by={};list.forEach(m=>{(by[msgTh(m)]=by[msgTh(m)]||[]).push(m)});let popped=0,last=null;
+  Object.entries(by).forEach(([th,a])=>{
+    if(msgVisibleTh()===th){msgMarkRead(th);return}
+    const m=a[a.length-1];last=m;popped++;
+    msgPopShow(th,(th==='all'?'전체 · ':'')+msgName(m.sender_id),m.body,a.length)});
+  if(popped){
+    if(!muted())beep();
+    if(document.hidden&&!muted()&&notifState()==='granted'&&S.settings.notify&&last){try{const n=new Notification('💬 '+(msgTh(last)==='all'?'전체 · ':'')+msgName(last.sender_id),{body:last.body.slice(0,120),tag:'msg-'+msgTh(last)});n.onclick=()=>{window.focus();n.close()}}catch(e){}}}}
+function msgPopShow(th,who,text,count){MSG.pops=MSG.pops.filter(p=>p.th!==th);MSG.pops.push({th,who,text,count});MSG.pops=MSG.pops.slice(-4);msgPopPaint()}
+function msgPopPaint(){const el=$('#msgPop');if(!el)return;
+  el.innerHTML=MSG.pops.map(p=>`<div class="msg-pop"><b>💬 ${esc(p.who)}${p.count>1&&p.th!=='*'?` 외 ${p.count-1}건`:''}</b><div class="mtx">${esc(p.text.length>80?p.text.slice(0,80)+'…':p.text)}</div><div class="mbt"><button type="button" class="btn sm primary" data-act="msgOpen" data-th="${p.th}">${p.th==='*'?'열기':'답장·열기'}</button><button type="button" class="btn sm" data-act="msgPopX" data-th="${p.th}">닫기</button></div></div>`).join('')}
+function msgBadge(){
+  const b=$('#btnMsg'),g=$('#msgBdg'),n=MSG.ready?msgUnreadAll():0;
+  if(b)b.hidden=!(MSG.ready&&isTeam());
+  if(g){g.hidden=!n;g.textContent=n>99?'99+':n}
+  if(!flashTimer)document.title=n?`(💬${n}) 업무 챙김판`:'업무 챙김판'}
+function msgOpenUi(th){
+  if(!MSG.ready)return;
+  if(th==='*'||!th){const u=msgThreads().find(t=>msgUnread(t)>0);if(th==='*'&&u)th=u;else if(th==='*')th=MSG.thread}
+  if(th)MSG.thread=th;
+  MSG.pops=MSG.pops.filter(p=>p.th!==th&&p.th!=='*');msgPopPaint();
+  const box=$('#msgBox');box.classList.toggle('inth',!!th&&msgMobile());
+  const d=$('#msgDlg');if(!d.open)d.showModal();
+  msgPanel(true);if(!msgMobile()||th)setTimeout(()=>{const t=$('#mText');if(t&&!msgMobile())t.focus()},60)}
+function msgPanel(scroll){
+  const d=$('#msgDlg');if(!d||!d.open)return;
+  const me=msgMe(),th=MSG.thread,last=t=>{const a=MSG.msgs.filter(m=>msgTh(m)===t);return a[a.length-1]};
+  $('#mList').innerHTML=msgThreads().map(t=>{const l=last(t),u=msgUnread(t),pv=l?((l.sender_id===me?'나: ':(t==='all'?msgName(l.sender_id)+': ':''))+l.body).replace(/\s+/g,' ').slice(0,34):'대화 없음';
+    return `<button type="button" class="msg-th ${t===th?'on':''}" data-act="msgPick" data-th="${t}"><span class="who">${t==='all'?'📢 전체(단체)':'👤 '+esc(msgName(t))}</span>${u?`<i class="msg-bdg">${u}</i>`:''}<small>${esc(pv)}</small></button>`}).join('');
+  $('#mTitle').textContent=th==='all'?'📢 전체(단체) — 팀원 모두에게 전달됩니다':'👤 '+msgName(th)+' — 둘만 볼 수 있습니다';
+  const log=$('#mLog'),near=log.scrollHeight-log.scrollTop-log.clientHeight<60,msgs=MSG.msgs.filter(m=>msgTh(m)===th);
+  log.innerHTML=msgs.length?msgs.map(m=>{const mine=m.sender_id===me;
+    return `<div class="msg-bb ${mine?'me':''}">${!mine&&th==='all'?`<small class="who">${esc(msgName(m.sender_id))}</small>`:''}<div class="tx">${esc(m.body)}</div><small class="tm2">${msgFmt(m.created_at)}${mine?` · <button type="button" class="msg-lnk" data-act="msgDel" data-id="${m.id}">회수</button>`:''}</small></div>`}).join(''):'<p class="muted" style="text-align:center;margin-top:30px">아직 주고받은 쪽지가 없습니다.</p>';
+  if(scroll||near)log.scrollTop=log.scrollHeight;
+  const v=msgVisibleTh();if(v){msgMarkRead(v)}}
+async function msgMarkRead(th){
+  const a=MSG.msgs.filter(m=>msgTh(m)===th);if(!a.length)return;const lt=a[a.length-1].created_at;
+  if(Date.parse(lt)<=msgReadTs(th))return;
+  MSG.reads[th]=lt;MSG.pops=MSG.pops.filter(p=>p.th!==th);msgPopPaint();msgBadge();
+  try{await sbFetch('/rest/v1/team_message_reads?on_conflict=user_id,thread_key',{method:'POST',headers:{Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify({user_id:msgMe(),thread_key:th,read_at:lt})})}catch(e){}}
+async function msgSend(){
+  const ta=$('#mText'),txt=ta.value.trim();if(!txt)return;
+  if(txt.length>1000){toast('1000자까지 보낼 수 있습니다','err');return}
+  const th=MSG.thread;ta.disabled=true;
+  try{
+    const r=await sbFetch('/rest/v1/team_messages',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({recipient_id:th==='all'?null:th,body:txt})});
+    if(!r.ok)throw new Error('http'+r.status);
+    const row=(await r.json())[0];msgSet([row],false);ta.value='';msgMarkRead(th);msgBadge();
+  }catch(e){toast('쪽지를 보내지 못했습니다. 입력한 내용은 그대로 남아 있습니다','err')}
+  finally{ta.disabled=false;if(!msgMobile())ta.focus();msgPanel(true)}}
+async function msgDelete(id){
+  if(!confirm('이 쪽지를 회수(삭제)할까요? 받은 사람의 화면에서도 곧 사라집니다.'))return;
+  try{const r=await sbFetch(`/rest/v1/team_messages?id=eq.${encodeURIComponent(id)}`,{method:'DELETE',headers:{Prefer:'return=minimal'}});
+    if(!r.ok)throw new Error('http'+r.status);
+    MSG.msgs=MSG.msgs.filter(m=>m.id!==id);MSG.ids.delete(id);msgBadge();msgPanel();toast('쪽지를 회수했습니다')
+  }catch(e){toast('회수하지 못했습니다','err')}}
+document.addEventListener('submit',e=>{if(e.target.id==='msgForm'){e.preventDefault();e.stopImmediatePropagation();msgSend()}},true);
+document.addEventListener('keydown',e=>{if(e.target.id==='mText'&&e.key==='Enter'&&!e.shiftKey&&!e.isComposing&&e.keyCode!==229){e.preventDefault();e.stopImmediatePropagation();msgSend()}},true);
+setInterval(()=>{if(SB&&isTeam())msgPoll()},10000);
 (async()=>{
   applyTheme();await idb.open();
   render();flash();save();
   tick();setInterval(tick,20000);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden){tick();render();if(SB&&!sbBusy&&sbState!=='conflict'&&sbState!=='login')sbRun(S.dirty?sbPushFn:()=>sbPullFn(false))}});
   if(SB)sbRun(()=>sbPullFn(false));
-  window.__tt={get S(){return S},sbRun,sbPullFn,sbPushFn,get SB(){return SB},get sbState(){return sbState},render,analyze,hwpxBlocks,tick,fireAlarm,info,buckets,get IMP(){return IMP}};
+  window.__tt={get S(){return S},sbRun,sbPullFn,sbPushFn,get SB(){return SB},get sbState(){return sbState},render,analyze,hwpxBlocks,tick,fireAlarm,info,buckets,get IMP(){return IMP},get MSG(){return MSG},msgPoll,msgBadge,isTeam};
 })();
 })();
+
 </script>
 </body>
 </html>
