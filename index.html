@@ -440,11 +440,26 @@ const STATUS=['대기','진행','완료','보류'];
 /* ───────── 저장소 ───────── */
 const KEY='teamTracker.v1';
 let storageOK=true;
-const defaults=()=>({v:1,tasks:[],absences:[],memos:{},sync:{at:'',hash:''},dirty:false,pdirty:false,team:null,tm:{},tmInit:false,conflicts:[],fired:{},lastBackup:'',settings:{owners:['팀장 본인','담당자 A','담당자 B','담당자 C','담당자 D'],briefTime:'08:50',afterTime:'15:00',offsets:[7,3,1,0],soon:3,stale:4,notify:true,sound:true,muteUntil:0,logo:''}});
+const STAFF=['박성주 주임','이기정 주임','박상현 주임','오영렬 주임','김범수 주임','이정민 인턴'];
+const GEN_OWNERS=['팀장 본인','담당자 A','담당자 B','담당자 C','담당자 D'];
+const defaults=()=>({v:1,tasks:[],absences:[],memos:{},sync:{at:'',hash:''},dirty:false,pdirty:false,team:null,tm:{},tmInit:false,conflicts:[],fired:{},lastBackup:'',settings:{owners:['팀장 본인',...STAFF],extraOwners:[...STAFF],ownersV:0,briefTime:'08:50',afterTime:'15:00',offsets:[7,3,1,0],soon:3,stale:4,notify:true,sound:true,muteUntil:0,logo:''}});
 let S;
 try{S=JSON.parse(localStorage.getItem(KEY)||'null')}catch(e){S=null;storageOK=false}
 let SEED=null;if(!S){try{const e=document.getElementById('seedData');if(e&&e.textContent.trim())SEED=JSON.parse(e.textContent)}catch(_){}}
 S=Object.assign(defaults(),S||{});S.settings=Object.assign(defaults().settings,S.settings||{},SEED&&SEED.settings||{});
+/* 담당자 목록 1회 정리: 예전 자리표시자(담당자 A~D)를 없애고 직원 명단을 넣으며, 기존 업무의 담당자 표기를 통일합니다. */
+const ownerKey=n=>String(n||'').replace(/\s+/g,'').replace(/(주임|인턴)$/,'');
+function ownersMig(){const s=S.settings;if(s.ownersV===1)return false;
+  const keys=new Map(STAFF.map(n=>[ownerKey(n),n])),ren=o=>keys.get(ownerKey(o))||o,PH=/^담당자\s?[A-D]$/;
+  const uniq=a=>[...new Set(a)];
+  s.extraOwners=uniq([...(Array.isArray(s.extraOwners)?s.extraOwners:[]).map(ren),...STAFF]);
+  if(!S.team){
+    const old=Array.isArray(s.owners)?s.owners:[];
+    const first=old[0]&&!keys.has(ownerKey(old[0]))&&!PH.test(old[0])?old[0]:'팀장 본인';
+    s.owners=uniq([first,...STAFF,...old.slice(1).map(ren).filter(o=>!PH.test(o))]);
+    (S.tasks||[]).forEach(t=>{if(t.owner)t.owner=ren(t.owner)});(S.absences||[]).forEach(a=>{if(a.owner)a.owner=ren(a.owner)})}
+  s.ownersV=1;try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}return true}
+ownersMig();
 function save(){if(SB)sbCalcDirty();try{localStorage.setItem(KEY,JSON.stringify(S));storageOK=true}catch(e){storageOK=false;toast('저장에 실패했습니다. 백업(내보내기)을 먼저 받아 두세요.','err')}if(SB&&S.dirty&&sbState!=='conflict'&&sbState!=='login')sbSchedule()}
 const self=()=>S.settings.owners[0]||'';
 const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
@@ -505,6 +520,7 @@ function teamDirty(){
   return TEAM_CFG.some(c=>{const m=tmeta(c.k),l=c.get(),ids=new Set(l.map(x=>x.id));
     return l.some(x=>!(x.id in m.h)||sbHash(x)!==m.h[x.id])||Object.keys(m.h).some(id=>!ids.has(id))})}
 const teamUid=name=>{const p=S.team&&S.team.list.find(x=>x.display_name===name);return p?p.user_id:null};
+function teamOwnerList(me,rows){return [...new Set([me.display_name,...rows.filter(x=>x.user_id!==me.user_id).map(x=>x.display_name),...(S.settings.extraOwners||[])])]}
 async function teamLoad(){
   const r=await sbFetch('/rest/v1/team_profiles?select=user_id,display_name,role');
   if(r.status===404||r.status===406){S.team=null;return}   // 표가 없으면 개인 모드
@@ -512,7 +528,7 @@ async function teamLoad(){
   const rows=await r.json(),me=rows.find(x=>x.user_id===SB.uid);
   if(!me){S.team=null;return}                               // 프로필이 없으면 개인 모드
   S.team={me,list:rows};
-  S.settings.owners=[me.display_name,...rows.filter(x=>x.user_id!==me.user_id).map(x=>x.display_name)];
+  S.settings.owners=teamOwnerList(me,rows);
   save();render();msgStart()}
 function teamKeep(c,x,why){S.conflicts=(S.conflicts||[]).slice(-29);S.conflicts.push({at:new Date().toISOString(),table:c.table,why,data:x})}
 async function teamSyncOne(c,notes){
@@ -596,7 +612,7 @@ function sbApply(row){
   const d=row.data||{};
   if(!isTeam()){S.tasks=d.tasks||[];S.absences=d.absences||[]}
   S.memos=d.memos||{};
-  const ow=S.settings.owners;S.settings=Object.assign(defaults().settings,S.settings,d.settings||{});if(isTeam())S.settings.owners=ow;
+  const ow=S.settings.owners;S.settings=Object.assign(defaults().settings,S.settings,d.settings||{});if(isTeam())S.settings.owners=teamOwnerList(S.team.me,S.team.list);else if(!(d.settings&&d.settings.ownersV===1)){S.settings.ownersV=0;ownersMig()}
   S.sync={at:row.updated_at,hash:sbHash(sbPayload())};S.pdirty=false;S.dirty=teamDirty();
   save();render();setSb('ok')}
 async function sbPullFn(manual){
@@ -980,7 +996,7 @@ function viewAll(){
 function viewSettings(){
   const s=S.settings,p=notifState();
   return `<h2>설정</h2>
-  <div class="panel"><h3>담당자 목록</h3><p class="muted">한 줄에 한 명. <b>첫 줄은 팀장 본인</b>(확인 알림 대상에서 제외)입니다. 이름 대신 "담당자 A", "시설팀장"처럼 직책·코드로 두면 화면을 공유할 때도 안전합니다.</p>
+  <div class="panel"><h3>담당자 목록</h3><p class="muted">한 줄에 한 명. <b>첫 줄은 팀장 본인</b>(확인 알림 대상에서 제외)입니다.${isTeam()?'<br>팀 공유 중에는 <b>계정이 있는 팀원</b>이 서버 명단에서 자동으로 채워지고, 여기에 더한 이름(계정 없는 직원·인턴 등)은 이 로그인 계정에 저장됩니다. 서버 명단에 있는 이름을 지워도 다음 로그인 때 다시 나타납니다.':''}</p>
     <textarea id="s_owners">${esc(s.owners.join('\n'))}</textarea></div>
   <div class="panel"><h3>알림 규칙</h3><div class="row">
     <label class="f">아침 점검 알림${t24('id="s_brief"',s.briefTime)}</label>
@@ -1281,7 +1297,7 @@ async function exportBackup(){
 async function importBackup(file){
   try{const j=JSON.parse(await file.text());if(j.app!=='teamTracker'||!j.data)throw new Error('이 프로그램의 백업 파일이 아닙니다');
     if(!confirm(`백업 파일(업무 ${j.data.tasks.length}건)로 현재 데이터를 모두 바꿉니다. 계속할까요?`+(isTeam()?'\n\n⚠ 팀 공유 중입니다. 백업에 없는 업무는 서버에서도 삭제됩니다(삭제 권한이 있는 경우).':'')))return;
-    const oldSync=S.sync,oldTeam=[S.team,S.tm,S.tmInit,S.settings.owners];S=Object.assign(defaults(),j.data);S.settings=Object.assign(defaults().settings,S.settings||{});S.sync=oldSync||{at:'',hash:''};if(isTeam()){[S.team,S.tm,S.tmInit,S.settings.owners]=oldTeam}
+    const oldSync=S.sync,oldTeam=[S.team,S.tm,S.tmInit,S.settings.owners];S=Object.assign(defaults(),j.data);S.settings=Object.assign(defaults().settings,S.settings||{});S.sync=oldSync||{at:'',hash:''};if(isTeam()){[S.team,S.tm,S.tmInit,S.settings.owners]=oldTeam}else ownersMig();
     for(const [k,v] of Object.entries(j.images||{})){try{await idb.put(k,v)}catch(e){}}
     save();toast('백업을 불러왔습니다');render()}catch(e){toast('불러오기 실패: '+e.message,'err')}
 }
@@ -1353,7 +1369,7 @@ const actions={
   async makeTemplate(){
     if(!confirm('다른 부서에 줄 「배포용 빈 파일」을 만듭니다.\n\n• 업무·부재·메모·캡처 이미지는 들어가지 않습니다.\n• 담당자 목록은 기본값(팀장 본인, 담당자 A~D)으로 초기화됩니다.\n• 알림 시각·확인 간격·로고 설정은 현재 값이 들어갑니다.\n\n계속할까요?'))return;
     flushMemo();
-    const st=JSON.parse(JSON.stringify(S.settings));st.owners=defaults().settings.owners;st.muteUntil=0;
+    const st=JSON.parse(JSON.stringify(S.settings));st.owners=GEN_OWNERS.slice();st.extraOwners=[];st.ownersV=1;st.muteUntil=0;
     const root=document.documentElement.cloneNode(true);
     root.removeAttribute('data-theme');
     ['#main','#nav','#dlg','#toasts','#alarmMenu'].forEach(q=>{const e=root.querySelector(q);if(e){e.innerHTML='';e.removeAttribute('open')}});
@@ -1365,7 +1381,9 @@ const actions={
   saveSettings(){
     const s=S.settings,own=$('#s_owners').value.split('\n').map(x=>x.trim()).filter(Boolean);
     if(!own.length){toast('담당자를 한 명 이상 입력하세요','err');return}
-    s.owners=own;s.briefTime=$('#s_brief').value;s.afterTime=$('#s_after').value;s.soon=Math.max(1,+$('#s_soon').value||3);s.stale=Math.max(1,+$('#s_stale').value||4);
+    if(isTeam()){const base=new Set(S.team.list.map(x=>x.display_name));s.extraOwners=own.filter(n=>!base.has(n));s.owners=teamOwnerList(S.team.me,S.team.list)}
+    else{s.owners=own;s.extraOwners=own.slice(1)}
+    s.ownersV=1;s.briefTime=$('#s_brief').value;s.afterTime=$('#s_after').value;s.soon=Math.max(1,+$('#s_soon').value||3);s.stale=Math.max(1,+$('#s_stale').value||4);
     s.offsets=$('#s_off').value.split(',').map(x=>parseInt(x,10)).filter(n=>n>=0&&n<=60);if(!s.offsets.length)s.offsets=[7,3,1,0];s.sound=$('#s_sound').checked;
     save();render();toast('설정을 저장했습니다')},
   pickHwpx(){$('#fHwpx').click()},
@@ -1664,7 +1682,7 @@ setInterval(()=>{if(SB&&isTeam())msgPoll()},10000);
   tick();setInterval(tick,20000);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden){tick();render();if(SB&&!sbBusy&&sbState!=='conflict'&&sbState!=='login')sbRun(S.dirty?sbPushFn:()=>sbPullFn(false))}});
   if(SB)sbRun(()=>sbPullFn(false));
-  window.__tt={get S(){return S},sbRun,sbPullFn,sbPushFn,get SB(){return SB},get sbState(){return sbState},render,analyze,hwpxBlocks,tick,fireAlarm,info,buckets,get IMP(){return IMP},get MSG(){return MSG},msgPoll,msgBadge,isTeam};
+  window.__tt={get S(){return S},teamOwnerList,ownersMig,STAFF,sbRun,sbPullFn,sbPushFn,get SB(){return SB},get sbState(){return sbState},render,analyze,hwpxBlocks,tick,fireAlarm,info,buckets,get IMP(){return IMP},get MSG(){return MSG},msgPoll,msgBadge,isTeam};
 })();
 })();
 
