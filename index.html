@@ -440,7 +440,7 @@ const STATUS=['대기','진행','완료','보류'];
 /* ───────── 저장소 ───────── */
 const KEY='teamTracker.v1';
 let storageOK=true;
-const STAFF=['박성주 주임','이기정 주임','박상현 주임','오영렬 주임','김범수 주임','이정민 인턴'];
+const STAFF=['박성주 주임','이기정 주임','박상현 주임','오영렬 주임','김범식 주임','이정민 인턴'];
 const GEN_OWNERS=['팀장 본인','담당자 A','담당자 B','담당자 C','담당자 D'];
 const defaults=()=>({v:1,tasks:[],absences:[],memos:{},sync:{at:'',hash:''},dirty:false,pdirty:false,team:null,tm:{},tmInit:false,conflicts:[],fired:{},lastBackup:'',settings:{owners:['팀장 본인',...STAFF],extraOwners:[...STAFF],ownersV:0,briefTime:'08:50',afterTime:'15:00',offsets:[7,3,1,0],soon:3,stale:4,notify:true,sound:true,muteUntil:0,logo:''}});
 let S;
@@ -448,8 +448,9 @@ try{S=JSON.parse(localStorage.getItem(KEY)||'null')}catch(e){S=null;storageOK=fa
 let SEED=null;if(!S){try{const e=document.getElementById('seedData');if(e&&e.textContent.trim())SEED=JSON.parse(e.textContent)}catch(_){}}
 S=Object.assign(defaults(),S||{});S.settings=Object.assign(defaults().settings,S.settings||{},SEED&&SEED.settings||{});
 /* 담당자 목록 1회 정리: 예전 자리표시자(담당자 A~D)를 없애고 직원 명단을 넣으며, 기존 업무의 담당자 표기를 통일합니다. */
-const ownerKey=n=>String(n||'').replace(/\s+/g,'').replace(/(주임|인턴)$/,'');
-function ownersMig(){const s=S.settings;if(s.ownersV===1)return false;
+const OWN_ALIAS={'김범수':'김범식'};
+const ownerKey=n=>{const k=String(n||'').replace(/\s+/g,'').replace(/(주임|인턴)$/,'');return OWN_ALIAS[k]||k};
+function ownersMig(){const s=S.settings;if(s.ownersV>=2)return false;
   const keys=new Map(STAFF.map(n=>[ownerKey(n),n])),ren=o=>keys.get(ownerKey(o))||o,PH=/^담당자\s?[A-D]$/;
   const uniq=a=>[...new Set(a)];
   s.extraOwners=uniq([...(Array.isArray(s.extraOwners)?s.extraOwners:[]).map(ren),...STAFF]);
@@ -458,7 +459,7 @@ function ownersMig(){const s=S.settings;if(s.ownersV===1)return false;
     const first=old[0]&&!keys.has(ownerKey(old[0]))&&!PH.test(old[0])?old[0]:'팀장 본인';
     s.owners=uniq([first,...STAFF,...old.slice(1).map(ren).filter(o=>!PH.test(o))]);
     (S.tasks||[]).forEach(t=>{if(t.owner)t.owner=ren(t.owner)});(S.absences||[]).forEach(a=>{if(a.owner)a.owner=ren(a.owner)})}
-  s.ownersV=1;try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}return true}
+  s.ownersV=2;try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}return true}
 ownersMig();
 function save(){if(SB)sbCalcDirty();try{localStorage.setItem(KEY,JSON.stringify(S));storageOK=true}catch(e){storageOK=false;toast('저장에 실패했습니다. 백업(내보내기)을 먼저 받아 두세요.','err')}if(SB&&S.dirty&&sbState!=='conflict'&&sbState!=='login')sbSchedule()}
 const self=()=>S.settings.owners[0]||'';
@@ -613,7 +614,7 @@ function sbApply(row){
   const d=row.data||{};
   if(!isTeam()){S.tasks=d.tasks||[];S.absences=d.absences||[]}
   S.memos=d.memos||{};
-  const ow=S.settings.owners;S.settings=Object.assign(defaults().settings,S.settings,d.settings||{});if(isTeam())S.settings.owners=teamOwnerList(S.team.me,S.team.list);else if(!(d.settings&&d.settings.ownersV===1)){S.settings.ownersV=0;ownersMig()}
+  const ow=S.settings.owners;S.settings=Object.assign(defaults().settings,S.settings,d.settings||{});if(isTeam())S.settings.owners=teamOwnerList(S.team.me,S.team.list);else if(!(d.settings&&d.settings.ownersV>=2)){S.settings.ownersV=0;ownersMig()}
   S.sync={at:row.updated_at,hash:sbHash(sbPayload())};S.pdirty=false;S.dirty=teamDirty();
   save();render();setSb('ok')}
 async function sbPullFn(manual){
@@ -1372,7 +1373,7 @@ const actions={
   async makeTemplate(){
     if(!confirm('다른 부서에 줄 「배포용 빈 파일」을 만듭니다.\n\n• 업무·부재·메모·캡처 이미지는 들어가지 않습니다.\n• 담당자 목록은 기본값(팀장 본인, 담당자 A~D)으로 초기화됩니다.\n• 알림 시각·확인 간격·로고 설정은 현재 값이 들어갑니다.\n\n계속할까요?'))return;
     flushMemo();
-    const st=JSON.parse(JSON.stringify(S.settings));st.owners=GEN_OWNERS.slice();st.extraOwners=[];st.ownersV=1;st.muteUntil=0;
+    const st=JSON.parse(JSON.stringify(S.settings));st.owners=GEN_OWNERS.slice();st.extraOwners=[];st.ownersV=2;st.muteUntil=0;
     const root=document.documentElement.cloneNode(true);
     root.removeAttribute('data-theme');
     ['#main','#nav','#dlg','#toasts','#alarmMenu'].forEach(q=>{const e=root.querySelector(q);if(e){e.innerHTML='';e.removeAttribute('open')}});
@@ -1386,7 +1387,7 @@ const actions={
     if(!own.length){toast('담당자를 한 명 이상 입력하세요','err');return}
     if(isTeam()){const base=new Set(S.team.list.map(x=>x.display_name));s.extraOwners=own.filter(n=>!base.has(n));s.owners=teamOwnerList(S.team.me,S.team.list)}
     else{s.owners=own;s.extraOwners=own.slice(1)}
-    s.ownersV=1;s.briefTime=$('#s_brief').value;s.afterTime=$('#s_after').value;s.soon=Math.max(1,+$('#s_soon').value||3);s.stale=Math.max(1,+$('#s_stale').value||4);
+    s.ownersV=2;s.briefTime=$('#s_brief').value;s.afterTime=$('#s_after').value;s.soon=Math.max(1,+$('#s_soon').value||3);s.stale=Math.max(1,+$('#s_stale').value||4);
     s.offsets=$('#s_off').value.split(',').map(x=>parseInt(x,10)).filter(n=>n>=0&&n<=60);if(!s.offsets.length)s.offsets=[7,3,1,0];s.sound=$('#s_sound').checked;
     save();render();toast('설정을 저장했습니다')},
   pickHwpx(){$('#fHwpx').click()},
